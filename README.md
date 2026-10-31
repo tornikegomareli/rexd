@@ -29,7 +29,13 @@ cd rexd
 make install
 ```
 
-This puts `rexd` in your Go bin folder, usually `~/go/bin`.
+This puts `rexd` in your Go bin folder, usually `~/go/bin`. If that folder is not on your `PATH`, choose another one:
+
+```sh
+GOBIN="$HOME/.local/bin" make install
+```
+
+To update rexd itself, run `git pull`, then `make install` and `rexd setup`. `rexd setup` restarts the daemon with the new version.
 
 Requirements:
 
