@@ -66,28 +66,25 @@ func TestCopyDir(t *testing.T) {
 }
 
 func TestCopyDirWhenTheFolderIsALink(t *testing.T) {
-	real := t.TempDir()
-	mustWrite(t, filepath.Join(real, "top.txt"), "top", 0o644)
-	parent := t.TempDir()
-	for name, target := range map[string]string{"absolute": real} {
-		link := filepath.Join(parent, name)
-		if err := os.Symlink(target, link); err != nil {
-			t.Fatal(err)
-		}
-		dst := filepath.Join(t.TempDir(), "copy")
-		if err := CopyDir(link, dst); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		info, err := os.Lstat(dst)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !info.IsDir() {
-			t.Fatalf("%s: the copy is a link, not a folder", name)
-		}
-		if got, _ := os.ReadFile(filepath.Join(dst, "top.txt")); string(got) != "top" {
-			t.Errorf("%s: top.txt = %q", name, got)
-		}
+	source := t.TempDir()
+	mustWrite(t, filepath.Join(source, "top.txt"), "top", 0o644)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(source, link); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "copy")
+	if err := CopyDir(link, dst); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() {
+		t.Fatal("the copy is a link, not a folder")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dst, "top.txt")); string(got) != "top" {
+		t.Errorf("top.txt = %q", got)
 	}
 }
 
