@@ -636,6 +636,53 @@ func TestUpdateBrokenVersionKeepsTheOldOne(t *testing.T) {
 	}
 }
 
+// The last check can fail after the config code has been replaced. Rollback must
+// then leave rexd.lua in step with what is back in place.
+func TestUpdateRollbackWhenTheNewVersionDropsConfigCode(t *testing.T) {
+	e := newEnv(t)
+	src := pluginFiles(t, "acme.foo", "1.0", configManifest+"\n[[scripts]]\nname = \"s\"\npath = \"s.lua\"", map[string]string{"rex/config.lua": "-- x", "s.lua": ""})
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: src}); err != nil {
+		t.Fatal(err)
+	}
+	indexBefore := read(t, e.layout.Index())
+	write(t, filepath.Join(src, "rex-plugin.toml"), "id = \"acme.foo\"\nname = \"T\"\nversion = \"2\"\n[[scripts]]\nname = \"s\"\npath = \"s.lua\"\n")
+
+	e.fake.FailChecksAfter(1) // The check of the user's config passes, and the last one fails.
+	if _, err := e.m.Update(context.Background(), nil); err == nil {
+		t.Fatal("no error")
+	}
+
+	if got := read(t, e.layout.Module("acme.foo")); got != "-- x" {
+		t.Errorf("module = %q", got)
+	}
+	if got := read(t, e.layout.Index()); got != indexBefore {
+		t.Errorf("index should list the plugin again:\n%s", got)
+	}
+	if got := e.state().Plugins["acme.foo"]; got.Version != "1.0" || got.Generation != 1 {
+		t.Errorf("state = %+v", got)
+	}
+}
+
+func TestUpdateRollbackWhenTheNewVersionAddsConfigCode(t *testing.T) {
+	e := newEnv(t)
+	src := pluginFiles(t, "acme.foo", "1.0", "[[scripts]]\nname = \"s\"\npath = \"s.lua\"", map[string]string{"s.lua": "", "rex/config.lua": "-- x"})
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: src}); err != nil {
+		t.Fatal(err)
+	}
+	indexBefore := read(t, e.layout.Index())
+	write(t, filepath.Join(src, "rex-plugin.toml"), "id = \"acme.foo\"\nname = \"T\"\nversion = \"2\"\n"+configManifest+"\n[[scripts]]\nname = \"s\"\npath = \"s.lua\"\n")
+
+	e.fake.FailChecksAfter(2) // The user's config and the plugin pass, and the last check fails.
+	if _, err := e.m.Update(context.Background(), nil); err == nil {
+		t.Fatal("no error")
+	}
+
+	missing(t, e.layout.Module("acme.foo"))
+	if got := read(t, e.layout.Index()); got != indexBefore {
+		t.Errorf("index should not list the plugin:\n%s", got)
+	}
+}
+
 func TestUpdateOneFailureDoesNotStopTheOthers(t *testing.T) {
 	e := newEnv(t)
 	bad := gitPlugin(t, "acme.bad", "1.0", "-- one")

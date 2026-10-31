@@ -561,7 +561,16 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 	if err != nil {
 		return result, nil, err
 	}
-	undo.push(restoreModule)
+	// One step, in this order: rexd.lua lists a plugin if its config file exists,
+	// so the file has to be back before rexd.lua is written.
+	previous := *p
+	undo.push(func() error {
+		*p = previous
+		if err := restoreModule(); err != nil {
+			return err
+		}
+		return layout.WriteIndex(m.entries(current, layout))
+	})
 	if man.Config != "" {
 		entry := rexconfig.Entry{ID: man.ID, Version: man.Version, Dir: dir}
 		if err := layout.Check(ctx, client, entry); err != nil {
@@ -569,11 +578,6 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 		}
 	}
 
-	previous := *p
-	undo.push(func() error {
-		*p = previous
-		return layout.WriteIndex(m.entries(current, layout))
-	})
 	p.Version = man.Version
 	p.Commit = commit
 	p.Generation++

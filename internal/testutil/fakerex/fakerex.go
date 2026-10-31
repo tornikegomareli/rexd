@@ -33,6 +33,7 @@ const (
 	fileSessions   = "sessions"
 	fileAPI        = "api"
 	fileConfigPath = "config-path"
+	fileCheckAllow = "check-allow"
 	fileCalls      = "calls.jsonl"
 	fileStarts     = "starts.jsonl"
 
@@ -120,6 +121,10 @@ func (f *Fake) SetSessions(ids ...string) { f.write(fileSessions, strings.Join(i
 
 // SetAPI sets the API revision that rex version reports.
 func (f *Fake) SetAPI(revision int) { f.write(fileAPI, strconv.Itoa(revision)) }
+
+// FailChecksAfter lets n more config checks pass, then fails every later one. It
+// reaches the last steps of a change, after earlier checks have passed.
+func (f *Fake) FailChecksAfter(n int) { f.write(fileCheckAllow, strconv.Itoa(n)) }
 
 // SetConfigPath sets the config path that rex keymap reports.
 func (f *Fake) SetConfigPath(path string) { f.write(fileConfigPath, path) }
@@ -230,6 +235,10 @@ func Run(dir string, args []string) int {
 		}
 		switch args[1] {
 		case "check":
+			if checksExhausted(dir) {
+				fmt.Println("error init.lua:1: told to fail")
+				return exitConfigErrors
+			}
 			return configCheck(args[2])
 		case "reload":
 			if down {
@@ -270,6 +279,21 @@ func exists(path string) bool {
 func sessions(dir string) []string {
 	data, _ := os.ReadFile(filepath.Join(dir, fileSessions))
 	return strings.Fields(string(data))
+}
+
+// checksExhausted counts down what FailChecksAfter set.
+func checksExhausted(dir string) bool {
+	path := filepath.Join(dir, fileCheckAllow)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	left, _ := strconv.Atoi(string(data))
+	if left <= 0 {
+		return true
+	}
+	os.WriteFile(path, []byte(strconv.Itoa(left-1)), 0o644)
+	return false
 }
 
 // configCheck fails if the file, or a Lua file in the rexd folder beside it,
