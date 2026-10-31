@@ -92,7 +92,7 @@ The command line writes `state.json` and sends `SIGHUP`. The daemon reads the fi
 
 So everything rexd knows survives a restart of either side, and the daemon can start with no conversation. `SIGHUP` is safe to repeat, because it only means to look at the file again.
 
-A file lock held for the daemon's lifetime proves it is alive. The kernel releases the lock when the process dies, however it dies. So a stale PID file can never be mistaken for a live daemon.
+A file lock held for the daemon's lifetime proves it is alive. The kernel releases the lock when the process dies, however it dies. Commands that only ask take the same lock shared, so they do not look like a daemon to each other. So a stale PID file can never be mistaken for a live daemon.
 
 ## Why one daemon and not one launchd job per script
 

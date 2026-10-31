@@ -37,8 +37,19 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 	}
 }
 
-// TryAcquire takes the lock at path, or returns ErrHeld without waiting.
+// TryAcquire takes the lock at path alone, or returns ErrHeld without waiting.
 func TryAcquire(path string) (*Lock, error) {
+	return tryLock(path, syscall.LOCK_EX)
+}
+
+// TryAcquireShared takes the lock at path beside other shared holders, or returns
+// ErrHeld without waiting if someone holds it alone. It lets a process ask whether
+// a lock is held without looking like a holder to others that ask.
+func TryAcquireShared(path string) (*Lock, error) {
+	return tryLock(path, syscall.LOCK_SH)
+}
+
+func tryLock(path string, how int) (*Lock, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -47,7 +58,7 @@ func TryAcquire(path string) (*Lock, error) {
 		return nil, err
 	}
 	for {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		err = syscall.Flock(int(f.Fd()), how|syscall.LOCK_NB)
 		if !errors.Is(err, syscall.EINTR) {
 			break
 		}

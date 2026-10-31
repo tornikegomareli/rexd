@@ -118,7 +118,7 @@ func Run(ctx context.Context, opts Options) error {
 	}).Run(ctx, reload)
 }
 
-// acquireDaemonLock takes the lock, retrying for a moment. Running holds the lock
+// acquireDaemonLock takes the lock, retrying for a moment. Running shares the lock
 // for an instant when it checks for a daemon, and that must not look like one.
 func acquireDaemonLock(dirs paths.Dirs) (*lockfile.Lock, error) {
 	for attempt := 0; ; attempt++ {
@@ -187,7 +187,7 @@ func fingerprint(server string, plugin *state.Plugin, script manifest.Script) st
 
 // Running reports whether a daemon holds the lock, and its process ID if known.
 func Running(dirs paths.Dirs) (pid int, running bool, err error) {
-	lock, err := lockfile.TryAcquire(dirs.DaemonLock())
+	lock, err := lockfile.TryAcquireShared(dirs.DaemonLock())
 	switch {
 	case errors.Is(err, lockfile.ErrHeld):
 		data, readErr := os.ReadFile(dirs.DaemonPID())

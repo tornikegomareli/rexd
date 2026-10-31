@@ -167,7 +167,7 @@ func TestSecondDaemonIsRefused(t *testing.T) {
 func TestStartIsNotConfusedByARunningCheck(t *testing.T) {
 	dirs := testDirs(t)
 	// A check holds the lock for an instant. Here it holds it longer, to be sure.
-	check, err := lockfile.TryAcquire(dirs.DaemonLock())
+	check, err := lockfile.TryAcquireShared(dirs.DaemonLock())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +178,26 @@ func TestStartIsNotConfusedByARunningCheck(t *testing.T) {
 		t.Fatalf("the daemon lost to a check: %v", err)
 	}
 	lock.Release()
+}
+
+// A daemon that crashed leaves its PID file. Another command's check must not make
+// that file look like a live daemon, because Stop would signal whoever has the PID now.
+func TestRunningIsNotConfusedByAnotherCheck(t *testing.T) {
+	dirs := testDirs(t)
+	if err := os.MkdirAll(dirs.State, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dirs.DaemonPID(), []byte("12345\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	check, err := lockfile.TryAcquireShared(dirs.DaemonLock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer check.Release()
+	if pid, running, err := Running(dirs); running || err != nil {
+		t.Fatalf("pid %d, running %v, err %v", pid, running, err)
+	}
 }
 
 func TestRunning(t *testing.T) {

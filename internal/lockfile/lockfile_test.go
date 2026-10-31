@@ -27,6 +27,31 @@ func TestTryAcquireFailsWhileHeld(t *testing.T) {
 	again.Release()
 }
 
+func TestSharedLocksOnlyConflictWithAnExclusiveOne(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.lock")
+	first, err := TryAcquireShared(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := TryAcquireShared(path)
+	if err != nil {
+		t.Fatalf("second shared lock: %v", err)
+	}
+	if _, err := TryAcquire(path); !errors.Is(err, ErrHeld) {
+		t.Fatalf("exclusive lock over shared ones: got %v, want ErrHeld", err)
+	}
+	first.Release()
+	second.Release()
+	exclusive, err := TryAcquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer exclusive.Release()
+	if _, err := TryAcquireShared(path); !errors.Is(err, ErrHeld) {
+		t.Fatalf("shared lock over an exclusive one: got %v, want ErrHeld", err)
+	}
+}
+
 func TestAcquireCanBeCancelled(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.lock")
 	held, err := Acquire(context.Background(), path)
