@@ -250,9 +250,10 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 	}
 	defer cleanup()
 
+	// The working copy has a temporary name, so errors name the source.
 	man, warnings, err := manifest.Load(work)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", src.Location, err)
 	}
 	for _, warning := range warnings {
 		m.printf("warning: %s", warning)

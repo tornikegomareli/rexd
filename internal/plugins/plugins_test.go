@@ -235,6 +235,18 @@ func TestInstallGitAtARef(t *testing.T) {
 	}
 }
 
+func TestInstallOfAFolderThatIsNotAPluginNamesTheFolder(t *testing.T) {
+	e := newEnv(t)
+	src := t.TempDir()
+	_, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: src})
+	if err == nil || !strings.Contains(err.Error(), src+": ") || !strings.Contains(err.Error(), "not a rexd plugin") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "staging") {
+		t.Fatalf("the error names a temporary folder: %v", err)
+	}
+}
+
 func TestInstallBadGitSource(t *testing.T) {
 	e := newEnv(t)
 	_, err := e.m.Install(context.Background(), Source{Kind: state.KindGit, Location: "file://" + t.TempDir() + "/nope"})

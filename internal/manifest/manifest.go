@@ -17,6 +17,9 @@ const FileName = "rex-plugin.toml"
 
 const maxIDLength = 64
 
+// ErrNotAPlugin means a folder has no manifest.
+var ErrNotAPlugin = errors.New("no " + FileName + " found, so this is not a rexd plugin")
+
 var (
 	// An id is at least two dot-separated segments, such as "acme.bell-notify".
 	// Segments become folders and Lua module names, so the alphabet stays small.
@@ -71,7 +74,7 @@ func Load(dir string) (*Manifest, []string, error) {
 	var m Manifest
 	meta, err := toml.DecodeFile(path, &m)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, fmt.Errorf("%s has no %s, so it is not a rexd plugin", dir, FileName)
+		return nil, nil, ErrNotAPlugin
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading %s: %w", FileName, err)
