@@ -158,7 +158,6 @@ func waitForDaemon(ctx context.Context, dirs paths.Dirs) bool {
 func runTeardown(ctx context.Context, a *app, args []string) error {
 	fs := a.flags("teardown")
 	purge := fs.Bool("purge", false, "also delete installed plugins, state and logs")
-	noService := fs.Bool("no-service", false, "leave the LaunchAgent alone")
 	if err := a.parse(fs, args); err != nil {
 		return err
 	}
@@ -169,10 +168,9 @@ func runTeardown(ctx context.Context, a *app, args []string) error {
 	if err != nil {
 		return err
 	}
-	if !*noService {
-		if err := service.Uninstall(ctx, a.serviceLabel); err != nil {
-			return err
-		}
+	// The LaunchAgent goes first. It would start a stopped daemon again.
+	if err := service.Uninstall(ctx, a.serviceLabel); err != nil {
+		return err
 	}
 	if _, err := daemon.Stop(ctx, m.Dirs, daemonStopWait); err != nil {
 		return err

@@ -151,7 +151,7 @@ the old one. A plugin installed at a tag or commit stays there.`,
 			run:     runLogs,
 		},
 		{
-			name: "teardown", args: "[--purge] [--no-service]",
+			name: "teardown", args: "[--purge]",
 			summary: "Disconnect rexd from Rex and stop the daemon",
 			help: `
 Removes the line from init.lua, the generated files and the LaunchAgent. Plugins

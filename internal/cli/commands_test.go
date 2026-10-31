@@ -161,6 +161,7 @@ func TestUsageErrorsExitWithStatus2(t *testing.T) {
 		{"list", "extra"},
 		{"status", "extra"},
 		{"teardown", "extra"},
+		{"teardown", "--no-service"},
 		{"daemon", "extra"},
 		{"logs"},
 		{"logs", "--daemon", "a.b"},
@@ -420,11 +421,11 @@ func appendTo(t *testing.T, path, content string) {
 	f.WriteString(content)
 }
 
-func TestTeardownWithNoService(t *testing.T) {
+func TestTeardown(t *testing.T) {
 	e := newCLI(t)
 	e.setup()
 	e.mustRun("install", samplePlugin(t, "acme.sample", "1.0"))
-	out := e.mustRun("teardown", "--no-service")
+	out := e.mustRun("teardown")
 	if !strings.Contains(out, "Plugins stay in "+e.dirs.Plugins()) {
 		t.Errorf("output:\n%s", out)
 	}
@@ -435,7 +436,7 @@ func TestTeardownWithNoService(t *testing.T) {
 		t.Errorf("the plugin should stay installed:\n%s", out)
 	}
 
-	out = e.mustRun("teardown", "--no-service", "--purge")
+	out = e.mustRun("teardown", "--purge")
 	if !strings.Contains(out, "deleted") {
 		t.Errorf("output:\n%s", out)
 	}

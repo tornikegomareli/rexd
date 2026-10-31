@@ -268,6 +268,25 @@ func (r *rig) setup() {
 	r.mustRexd("setup", "--server", r.server, "--rex-config", r.init, "--no-service")
 }
 
+// cliInProcess runs the command line inside the test, with a LaunchAgent label of
+// its own. Commands that touch the LaunchAgent must run this way: the rexd binary
+// would use the normal label, and so a real installation.
+func (r *rig) cliInProcess(label string, args ...string) string {
+	r.t.Helper()
+	for _, kv := range r.env {
+		name, value, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "XDG_") || strings.HasPrefix(name, "REXD_") {
+			r.t.Setenv(name, value)
+		}
+	}
+	var out bytes.Buffer
+	code := cli.Main(args, cli.Options{Stdout: &out, Stderr: &out, ServiceLabel: label, Executable: rexdBinary})
+	if code != 0 {
+		r.t.Fatalf("rexd %v: exit %d\n%s", args, code, out.String())
+	}
+	return out.String()
+}
+
 func (r *rig) startDaemon() {
 	r.t.Helper()
 	logFile, err := os.OpenFile(filepath.Join(r.root, "daemon.out"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -810,7 +829,7 @@ func TestTeardownAndSetupAgain(t *testing.T) {
 	r.mustRexd("install", r.plugin(probeID, "e2e_probe", "1.0"))
 	script := r.waitRunning(probeID, 0)
 
-	r.mustRexd("teardown", "--no-service")
+	r.cliInProcess(service.Label+".e2e-none", "teardown")
 	r.daemonCmd.Wait()
 	r.daemonCmd = nil
 	if alive(script.PID) {
@@ -855,21 +874,10 @@ func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 	}
 	r := newRig(t)
 	r.newSession("first")
-	for _, kv := range r.env {
-		name, value, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "XDG_") || strings.HasPrefix(name, "REXD_") {
-			t.Setenv(name, value)
-		}
-	}
 	label := fmt.Sprintf("%s.e2e-cli.%d", service.Label, os.Getpid())
 	run := func(args ...string) string {
 		t.Helper()
-		var out bytes.Buffer
-		code := cli.Main(args, cli.Options{Stdout: &out, Stderr: &out, ServiceLabel: label, Executable: rexdBinary})
-		if code != 0 {
-			t.Fatalf("rexd %v: exit %d\n%s", args, code, out.String())
-		}
-		return out.String()
+		return r.cliInProcess(label, args...)
 	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -909,9 +917,18 @@ func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 		t.Errorf("the event was handled %d times", got)
 	}
 
+	running := r.waitRunning(probeID, 0)
 	run("teardown")
 	if r.status().Daemon.Running {
 		t.Error("the daemon is still running")
+	}
+	// launchd must not bring it back. KeepAlive restarts within about 10 seconds.
+	time.Sleep(11 * time.Second)
+	if r.status().Daemon.Running {
+		t.Error("launchd started the daemon again after teardown")
+	}
+	if alive(running.PID) {
+		t.Error("the script outlived the teardown")
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("the plist is still there: %v", err)
