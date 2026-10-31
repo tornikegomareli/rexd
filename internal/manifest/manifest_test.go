@@ -48,6 +48,27 @@ path = "rex/second.lua"
 run = ["make", "build"]
 `
 
+// The examples are what plugin authors copy, so they must stay valid. CI has no
+// Rex, so this runs here as well as in the end-to-end tests.
+func TestExamplesAreValid(t *testing.T) {
+	dirs, err := filepath.Glob("../../examples/*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirs) == 0 {
+		t.Fatal("found no examples")
+	}
+	for _, dir := range dirs {
+		_, warnings, err := Load(dir)
+		if err != nil {
+			t.Errorf("%s: %v", dir, err)
+		}
+		if len(warnings) > 0 {
+			t.Errorf("%s: %v", dir, warnings)
+		}
+	}
+}
+
 func TestLoadValid(t *testing.T) {
 	dir := plugin(t, valid, "rex/config.lua", "rex/notify.lua", "rex/second.lua")
 	m, warnings, err := Load(dir)
