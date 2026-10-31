@@ -192,6 +192,21 @@ func TestInstallModuleLinks(t *testing.T) {
 	}
 }
 
+func TestInstallModuleKeepsTheOldFileIfTheCopyFails(t *testing.T) {
+	l := layout(t)
+	src := filepath.Join(t.TempDir(), "config.lua")
+	os.WriteFile(src, []byte("-- one"), 0o644)
+	if err := l.InstallModule("acme.foo", src, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.InstallModule("acme.foo", filepath.Join(t.TempDir(), "missing.lua"), false); err == nil {
+		t.Fatal("no error for a missing source")
+	}
+	if got := readFile(t, l.Module("acme.foo")); got != "-- one" {
+		t.Fatalf("module = %q", got)
+	}
+}
+
 func TestInstallModuleReplacesAnExistingFile(t *testing.T) {
 	l := layout(t)
 	dir := t.TempDir()

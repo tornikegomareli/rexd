@@ -2,6 +2,7 @@
 package fsutil
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -78,16 +79,37 @@ func CopyDir(src, dst string) error {
 	})
 }
 
-// CopyFile copies one file, creating the folders above dst.
-func CopyFile(src, dst string) error {
+// CopyFileAtomic copies one file through WriteFileAtomic.
+func CopyFileAtomic(src, dst string) error {
 	info, err := os.Stat(src)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	data, err := os.ReadFile(src)
+	if err != nil {
 		return err
 	}
-	return copyFile(src, dst, info.Mode().Perm())
+	return WriteFileAtomic(dst, data, info.Mode().Perm())
+}
+
+// SymlinkAtomic makes path a link to target through a rename, replacing what is there.
+func SymlinkAtomic(target, path string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, "."+filepath.Base(path)+".link")
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := os.Symlink(target, tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func copyFile(src, dst string, perm fs.FileMode) error {

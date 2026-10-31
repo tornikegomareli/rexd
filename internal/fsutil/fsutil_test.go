@@ -103,12 +103,26 @@ func TestCopyDirWhenTheFolderIsARelativeLink(t *testing.T) {
 	}
 }
 
+func TestSymlinkAtomicReplacesAFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "link")
+	if err := WriteFileAtomic(path, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SymlinkAtomic("/some/target", path); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(path); err != nil || got != "/some/target" {
+		t.Fatalf("link = %q, %v", got, err)
+	}
+}
+
 func TestCopyFile(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "a.lua")
 	mustWrite(t, src, "x", 0o644)
 	dst := filepath.Join(dir, "deep", "er", "b.lua")
-	if err := CopyFile(src, dst); err != nil {
+	if err := CopyFileAtomic(src, dst); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(dst); string(got) != "x" {

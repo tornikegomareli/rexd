@@ -111,19 +111,14 @@ func (l Layout) checkIndexIsOurs() error {
 }
 
 // InstallModule places a plugin's config code beside init.lua. A link stays in
-// step with the source, which suits plugin development.
+// step with the source, which suits plugin development. What was there stays until
+// the new file is complete, so a failure leaves it as it was.
 func (l Layout) InstallModule(id, source string, link bool) error {
 	target := l.Module(id)
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
-	if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
 	if link {
-		return os.Symlink(source, target)
+		return fsutil.SymlinkAtomic(source, target)
 	}
-	return fsutil.CopyFile(source, target)
+	return fsutil.CopyFileAtomic(source, target)
 }
 
 // RemoveModule deletes a plugin's config code and the folders that leaves empty.
