@@ -143,7 +143,7 @@ func (i *Installation) serviceSpec() (service.Spec, error) {
 		return service.Spec{}, err
 	}
 	env := map[string]string{}
-	for _, name := range []string{"PATH", "REXD_REX", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
+	for _, name := range []string{"HOME", "PATH", "REXD_REX", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
 		if value := os.Getenv(name); value != "" {
 			env[name] = value
 		}

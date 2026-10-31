@@ -58,3 +58,16 @@ func TestWithoutVersionedRex(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// launchd gives an agent the account's home, so another $HOME must travel in the agent.
+func TestServiceSpecKeepsHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	spec, err := (&Installation{Dirs: paths.Under(home)}).serviceSpec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Env["HOME"] != home {
+		t.Errorf("env = %v", spec.Env)
+	}
+}
