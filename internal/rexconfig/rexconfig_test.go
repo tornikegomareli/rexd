@@ -401,6 +401,88 @@ func TestAddRequireRestore(t *testing.T) {
 	}
 }
 
+// People keep init.lua in a dotfiles repository, with a link in the config folder.
+func TestRequireEditsGoThroughASymlink(t *testing.T) {
+	l := layout(t)
+	target := filepath.Join(t.TempDir(), "dotfiles-init.lua")
+	if err := os.WriteFile(target, []byte("-- mine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(l.Dir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, l.Init); err != nil {
+		t.Fatal(err)
+	}
+	assertLink := func(when string) {
+		t.Helper()
+		info, err := os.Lstat(l.Init)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("%s: init.lua is no longer a link", when)
+		}
+	}
+
+	restore, err := l.AddRequire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLink("after AddRequire")
+	if got := readFile(t, target); got != requireLine+"-- mine\n" {
+		t.Errorf("target = %q", got)
+	}
+	if info, _ := os.Stat(target); info.Mode().Perm() != 0o600 {
+		t.Errorf("target mode = %v", info.Mode().Perm())
+	}
+
+	if err := restore(); err != nil {
+		t.Fatal(err)
+	}
+	assertLink("after restore")
+	if got := readFile(t, target); got != "-- mine\n" {
+		t.Errorf("restored target = %q", got)
+	}
+
+	if _, err := l.AddRequire(); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.RemoveRequire(); err != nil {
+		t.Fatal(err)
+	}
+	assertLink("after RemoveRequire")
+	if got := readFile(t, target); got != "-- mine\n" {
+		t.Errorf("target after RemoveRequire = %q", got)
+	}
+}
+
+func TestRemoveRequireKeepsALinkThatWouldBeLeftEmpty(t *testing.T) {
+	l := layout(t)
+	target := filepath.Join(t.TempDir(), "dotfiles-init.lua")
+	if err := os.WriteFile(target, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(l.Dir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, l.Init); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.AddRequire(); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.RemoveRequire(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(l.Init); err != nil {
+		t.Fatalf("the link is gone: %v", err)
+	}
+	if got := readFile(t, target); got != "" {
+		t.Errorf("target = %q", got)
+	}
+}
+
 func TestRemoveRequire(t *testing.T) {
 	l := layout(t)
 	writeInit(t, l, "-- before\n"+requireLine+"rex.bind(\"cmd+d\", \"pane.zoom\")\n")

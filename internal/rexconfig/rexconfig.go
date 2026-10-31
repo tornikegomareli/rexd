@@ -201,11 +201,7 @@ func (l Layout) AddRequire() (restore func() error, err error) {
 	if requirePattern.Match(original) {
 		return restore, nil
 	}
-	perm, err := initMode(l.Init)
-	if err != nil {
-		return nil, err
-	}
-	if err := fsutil.WriteFileAtomic(l.Init, append([]byte(requireLine), original...), perm); err != nil {
+	if err := l.writeInit(append([]byte(requireLine), original...)); err != nil {
 		return nil, err
 	}
 	return restore, nil
@@ -225,14 +221,10 @@ func (l Layout) RemoveRequire() error {
 		return nil
 	}
 	rest := requirePattern.ReplaceAll(data, nil)
-	if len(bytes.TrimSpace(rest)) == 0 {
+	if info, err := os.Lstat(l.Init); len(bytes.TrimSpace(rest)) == 0 && err == nil && info.Mode()&os.ModeSymlink == 0 {
 		return os.Remove(l.Init)
 	}
-	perm, err := initMode(l.Init)
-	if err != nil {
-		return err
-	}
-	return fsutil.WriteFileAtomic(l.Init, rest, perm)
+	return l.writeInit(rest)
 }
 
 func (l Layout) restoreInit(original []byte, existed bool) error {
@@ -242,22 +234,26 @@ func (l Layout) restoreInit(original []byte, existed bool) error {
 		}
 		return nil
 	}
-	perm, err := initMode(l.Init)
-	if err != nil {
-		return err
-	}
-	return fsutil.WriteFileAtomic(l.Init, original, perm)
+	return l.writeInit(original)
 }
 
-func initMode(path string) (fs.FileMode, error) {
-	info, err := os.Stat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return 0o644, nil
+// writeInit replaces init.lua's content. The write goes through a symbolic link:
+// people keep the file in a dotfiles repository, and renaming over the link would
+// silently detach Rex's config from it.
+func (l Layout) writeInit(data []byte) error {
+	target := l.Init
+	if resolved, err := filepath.EvalSymlinks(l.Init); err == nil {
+		target = resolved
 	}
-	if err != nil {
-		return 0, err
+	perm := fs.FileMode(0o644)
+	info, err := os.Stat(target)
+	switch {
+	case err == nil:
+		perm = info.Mode().Perm()
+	case !errors.Is(err, fs.ErrNotExist):
+		return err
 	}
-	return info.Mode().Perm(), nil
+	return fsutil.WriteFileAtomic(target, data, perm)
 }
 
 // luaString renders s as a Lua 5.1 string literal.
