@@ -643,6 +643,29 @@ func TestAScriptThatCannotStartIsRetried(t *testing.T) {
 	})
 }
 
+func TestASignalIsReportedAsTheReason(t *testing.T) {
+	h := newHarness(t)
+	spec := h.script("victim", "")
+	h.setSpecs(spec)
+	h.run(fastTiming())
+
+	running := h.waitState("victim", state.ScriptRunning)
+	if err := syscall.Kill(running.PID, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	h.eventually("the recorded signal", func() bool {
+		s, ok := h.scriptStatus("victim")
+		return ok && s.LastExit != nil && s.LastExit.Code == -1 && s.LastExit.Error == "signal: killed"
+	})
+	log, err := os.ReadFile(spec.LogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(log), "rexd: exited: signal: killed") {
+		t.Errorf("log:\n%s", log)
+	}
+}
+
 func TestReportsPluginErrors(t *testing.T) {
 	h := newHarness(t)
 	sup := New(Options{

@@ -467,11 +467,14 @@ func describeScript(s state.ScriptStatus, rexState state.RexState) string {
 		if s.State == state.ScriptCrashing {
 			word = "crashing"
 		}
-		code := ""
+		reason := ""
 		if s.LastExit != nil {
-			code = fmt.Sprintf(" with status %d", s.LastExit.Code)
+			reason = fmt.Sprintf(" with status %d", s.LastExit.Code)
+			if s.LastExit.Code == -1 && s.LastExit.Error != "" {
+				reason = ": " + s.LastExit.Error
+			}
 		}
-		return fmt.Sprintf("%s%s, restarting in %s", word, code, time.Until(s.NextStart).Round(time.Second))
+		return fmt.Sprintf("%s%s, restarting in %s", word, reason, time.Until(s.NextStart).Round(time.Second))
 	}
 	return string(s.State)
 }

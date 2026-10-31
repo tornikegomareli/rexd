@@ -476,7 +476,11 @@ func (s *Supervisor) start(u *unit, session string) {
 		ended := time.Now()
 		code := exitCode(cmd, err)
 		lines.Flush() // Wait has returned, so nothing else writes to lines now.
-		note(output, "rexd: exited with status %d", code)
+		if code == -1 && err != nil {
+			note(output, "rexd: exited: %v", err)
+		} else {
+			note(output, "rexd: exited with status %d", code)
+		}
 		s.post(func() { s.handleExit(key, run, code, err, ended) })
 	}()
 }
@@ -533,7 +537,7 @@ func (s *Supervisor) handleExit(key string, run, code int, waitErr error, ended 
 	u.exitToJudge = true
 	u.lastExit = &state.Exit{Code: code, At: ended, Ran: u.lastRan.Round(time.Millisecond).String()}
 	var exit *exec.ExitError
-	if waitErr != nil && !errors.As(waitErr, &exit) {
+	if waitErr != nil && (code == -1 || !errors.As(waitErr, &exit)) {
 		u.lastExit.Error = waitErr.Error()
 	}
 	s.setState(u, state.ScriptWaiting)

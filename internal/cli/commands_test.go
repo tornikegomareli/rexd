@@ -277,6 +277,8 @@ func TestDescribeScript(t *testing.T) {
 		{state.ScriptStatus{State: state.ScriptStopping}, state.RexUp, "stopping"},
 		{state.ScriptStatus{State: state.ScriptBackoff, NextStart: next, LastExit: &state.Exit{Code: 1}}, state.RexUp, "exited with status 1, restarting in 4s"},
 		{state.ScriptStatus{State: state.ScriptCrashing, NextStart: next, LastExit: &state.Exit{Code: 2}}, state.RexUp, "crashing with status 2, restarting in 4s"},
+		{state.ScriptStatus{State: state.ScriptBackoff, NextStart: next, LastExit: &state.Exit{Code: -1, Error: "signal: killed"}}, state.RexUp, "exited: signal: killed, restarting in 4s"},
+		{state.ScriptStatus{State: state.ScriptCrashing, NextStart: next, LastExit: &state.Exit{Code: -1, Error: "signal: killed"}}, state.RexUp, "crashing: signal: killed, restarting in 4s"},
 	}
 	for _, tt := range tests {
 		if got := describeScript(tt.script, tt.rex); got != tt.want {

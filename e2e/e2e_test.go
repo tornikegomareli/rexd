@@ -470,7 +470,7 @@ func TestInstallRunAndRemove(t *testing.T) {
 	if second.Restarts != 1 {
 		t.Errorf("restarts = %d, want 1", second.Restarts)
 	}
-	if second.LastExit == nil || second.LastExit.Code != -1 {
+	if second.LastExit == nil || second.LastExit.Code != -1 || second.LastExit.Error != "signal: killed" {
 		t.Errorf("last exit = %+v", second.LastExit)
 	}
 	r.eventually("the second start", func() bool { return r.markerCount("started "+probeID+" 1.0") == 2 })
