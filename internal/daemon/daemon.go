@@ -196,6 +196,7 @@ func Running(dirs paths.Dirs) (pid int, running bool, err error) {
 		if readErr != nil {
 			return 0, true, nil // It is between taking the lock and writing the file.
 		}
+		// The daemon writes the file atomically, so only a hand edit can fail here.
 		pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
 		return pid, true, nil
 	case err != nil:

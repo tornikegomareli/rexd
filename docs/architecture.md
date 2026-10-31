@@ -19,7 +19,7 @@ All contact with Rex goes through the `rex` command. rexd never reads Rex's data
 | Package | What it does |
 | --- | --- |
 | `cli` | The command line |
-| `plugins` | Install, update, remove, setup and teardown, as transactions |
+| `plugins` | Install, update, remove, setup and teardown. Install, update and setup are transactions |
 | `rexconfig` | The generated `rexd.lua`, the strict check, and edits to `init.lua` |
 | `manifest` | Reads and validates `rex-plugin.toml` |
 | `daemon` | The single daemon process: lock, PID file, signals |

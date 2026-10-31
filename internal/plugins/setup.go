@@ -157,7 +157,7 @@ func (m *Manager) Teardown(ctx context.Context, opts TeardownOptions) error {
 		if err := os.RemoveAll(m.Dirs.Data); err != nil {
 			return err
 		}
-		// The lock file stays until this process releases it.
+		// The lock file stays, because this process holds it.
 		entries, err := os.ReadDir(m.Dirs.State)
 		if err != nil {
 			return err

@@ -1,9 +1,9 @@
 // Package plugins installs, updates and removes plugins, and connects rexd to
 // Rex's config.
 //
-// Each change is a transaction. Steps that succeeded are undone when a later
-// one fails, and Rex's own checker has the last word before anything is kept,
-// so a bad plugin never leaves the user's Rex config broken.
+// Install, update and setup are transactions. Steps that succeeded are undone when
+// a later one fails, and Rex's own checker has the last word before anything is
+// kept, so a bad plugin never leaves the user's Rex config broken.
 package plugins
 
 import (

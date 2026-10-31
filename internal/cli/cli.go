@@ -22,8 +22,8 @@ type Options struct {
 	Version string
 	Stdout  io.Writer
 	Stderr  io.Writer
-	// ServiceLabel names the LaunchAgent. Empty means the normal one. Tests set
-	// it, so they can never touch a real installation.
+	// ServiceLabel names the LaunchAgent. Empty means the normal one, whatever the
+	// XDG folders are, so tests that reach launchd must set it.
 	ServiceLabel string
 	// Executable is the program the LaunchAgent runs. Empty means this program.
 	// Tests that run in-process set it, because this program is the test binary.
