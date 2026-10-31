@@ -58,6 +58,14 @@ type Options struct {
 // Run holds the daemon lock and supervises scripts until ctx ends or a signal
 // says to stop. SIGHUP makes it read the state again.
 func Run(ctx context.Context, opts Options) error {
+	// Signals come first. A command finds the daemon through its PID file, and
+	// without a handler its SIGHUP would kill the daemon.
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	hangups := make(chan os.Signal, 1)
+	signal.Notify(hangups, syscall.SIGHUP)
+	defer signal.Stop(hangups)
+
 	dirs := opts.Dirs
 	lock, err := acquireDaemonLock(dirs)
 	if err != nil {
@@ -84,12 +92,6 @@ func Run(ctx context.Context, opts Options) error {
 	log.Info("daemon started", "pid", os.Getpid())
 	defer log.Info("daemon stopped")
 
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	hangups := make(chan os.Signal, 1)
-	signal.Notify(hangups, syscall.SIGHUP)
-	defer signal.Stop(hangups)
 	reload := make(chan struct{}, 1)
 	go func() {
 		for {
