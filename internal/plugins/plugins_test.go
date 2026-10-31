@@ -651,6 +651,51 @@ run = ["sh", "-c", "echo built >> lock.txt"]
 	}
 }
 
+func TestInstallNamesThePluginThatBreaksTheConfig(t *testing.T) {
+	e := newEnv(t)
+	bad := configPlugin(t, "acme.bad", "1.0", "-- fine")
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindLink, Location: bad}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(bad, "rex/config.lua"), "BROKEN")
+
+	src := configPlugin(t, "acme.other", "1.0", "-- fine")
+	_, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: src})
+	if err == nil || !strings.Contains(err.Error(), "acme.bad") || !strings.Contains(err.Error(), `rexd remove acme.bad`) {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), "your Rex config") {
+		t.Errorf("it blames the user's config: %v", err)
+	}
+	missing(t, e.dirs.Plugin("acme.other"))
+}
+
+func TestUpdateCanFixThePluginThatBreaksTheConfig(t *testing.T) {
+	e := newEnv(t)
+	other := configPlugin(t, "acme.a-first", "1.0", "-- fine")
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: other}); err != nil {
+		t.Fatal(err)
+	}
+	repo := gitPlugin(t, "acme.bad", "1.0", "-- one")
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindGit, Location: "file://" + repo}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, e.layout.Module("acme.bad"), "BROKEN")
+	commitChange(t, repo, "2.0", "-- fixed")
+
+	// Another plugin's update cannot help, so it stays blocked.
+	if _, err := e.m.Update(context.Background(), []string{"acme.a-first"}); err == nil || !strings.Contains(err.Error(), "acme.bad") {
+		t.Fatalf("err = %v", err)
+	}
+	// With every plugin, the guilty one goes first, and the others then pass.
+	if _, err := e.m.Update(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, e.layout.Module("acme.bad")); got != "-- fixed" {
+		t.Errorf("module = %q", got)
+	}
+}
+
 func TestUpdateBrokenVersionKeepsTheOldOne(t *testing.T) {
 	e := newEnv(t)
 	repo := gitPlugin(t, "acme.foo", "1.0", "-- one")

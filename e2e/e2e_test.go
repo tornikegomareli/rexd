@@ -966,6 +966,37 @@ func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 	}
 }
 
+// A plugin Rex's checker rejects blocks other changes. With real Rex, rexd must name
+// it, not blame the user's config, and an update must be able to fix it.
+func TestAPluginThatBreaksTheConfigIsNamed(t *testing.T) {
+	r := newRig(t)
+	r.setup()
+	r.newSession("first")
+	src := r.plugin(probeID, "e2e_probe", "1.0")
+	r.mustRexd("install", src, "--link")
+	config := filepath.Join(src, "rex", "config.lua")
+	good, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := `rex.action{ name = "not-a-valid-name", title = "Bad", run = function() end }`
+	if err := os.WriteFile(config, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	other := r.plugin("acme.other", "e2e_other", "1.0")
+	out, code := r.rexd("install", other)
+	if code == 0 || !strings.Contains(out, "rexd remove "+probeID) || strings.Contains(out, "your Rex config") {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+
+	if err := os.WriteFile(config, good, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.mustRexd("update", probeID)
+	r.mustRexd("install", other)
+}
+
 // normalAgent describes the LaunchAgent of the normal installation, if there is one.
 func normalAgent(t *testing.T) string {
 	t.Helper()

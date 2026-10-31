@@ -15,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -266,7 +268,7 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 		return nil, err
 	}
 	client := m.client(current)
-	if err := checkExistingConfig(ctx, client, layout); err != nil {
+	if err := checkExistingConfig(ctx, client, layout, current); err != nil {
 		return nil, err
 	}
 
@@ -405,15 +407,34 @@ func (m *Manager) activate(ctx context.Context, a activation, undo *undoStack) e
 	return a.current.Save(m.Dirs.StateFile())
 }
 
-// checkExistingConfig stops a change when the user's config is already broken.
-// Otherwise the failure would look like the plugin's fault.
-func checkExistingConfig(ctx context.Context, client rex.Client, layout rexconfig.Layout) error {
+// brokenPluginError is a config check that failed inside an installed plugin.
+type brokenPluginError struct {
+	id     string
+	detail string
+}
+
+func (e *brokenPluginError) Error() string {
+	return fmt.Sprintf("the config code of %s has errors, so rexd changed nothing. Fix that plugin, or run \"rexd remove %s\":\n%s", e.id, e.id, e.detail)
+}
+
+// moduleInError finds a plugin's config file in what Rex's checker reports.
+var moduleInError = regexp.MustCompile(`rexd/plugins/([^\s:]+)\.lua`)
+
+// checkExistingConfig stops a change when the config is already broken. Otherwise
+// the failure would look like the fault of the plugin being changed.
+func checkExistingConfig(ctx context.Context, client rex.Client, layout rexconfig.Layout, current *state.State) error {
 	err := client.CheckConfig(ctx, layout.Init)
 	var configErr *rex.ConfigError
-	if errors.As(err, &configErr) {
-		return fmt.Errorf("your Rex config has errors, so rexd changed nothing. Fix these first:\n%s", configErr.Error())
+	if !errors.As(err, &configErr) {
+		return err
 	}
-	return err
+	if match := moduleInError.FindStringSubmatch(configErr.Error()); match != nil {
+		id := strings.ReplaceAll(match[1], "/", ".")
+		if _, installed := current.Plugins[id]; installed {
+			return &brokenPluginError{id: id, detail: configErr.Error()}
+		}
+	}
+	return fmt.Errorf("your Rex config has errors, so rexd changed nothing. Fix these first:\n%s", configErr.Error())
 }
 
 func pluginConfigError(id string, err error) error {
@@ -489,9 +510,6 @@ func (m *Manager) Update(ctx context.Context, ids []string) ([]UpdateResult, err
 		return nil, err
 	}
 	client := m.client(current)
-	if err := checkExistingConfig(ctx, client, layout); err != nil {
-		return nil, err
-	}
 
 	targets := current.SortedPlugins()
 	if len(ids) > 0 {
@@ -503,6 +521,21 @@ func (m *Manager) Update(ctx context.Context, ids []string) ([]UpdateResult, err
 			}
 			targets = append(targets, p)
 		}
+	}
+
+	// An update can fix the plugin that breaks the config, so that one goes first.
+	// Until it is fixed, the checks of the others cannot pass.
+	err = checkExistingConfig(ctx, client, layout, current)
+	var broken *brokenPluginError
+	if errors.As(err, &broken) {
+		guilty := slices.IndexFunc(targets, func(p *state.Plugin) bool { return p.ID == broken.id })
+		if guilty >= 0 {
+			targets[0], targets[guilty] = targets[guilty], targets[0]
+			err = nil
+		}
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	var (

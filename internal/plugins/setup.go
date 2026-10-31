@@ -76,7 +76,7 @@ func (m *Manager) Setup(ctx context.Context, opts SetupOptions) (settings *state
 	}
 	undo.push(restore)
 
-	if err := checkExistingConfig(ctx, client, layout); err != nil {
+	if err := checkExistingConfig(ctx, client, layout, current); err != nil {
 		return nil, err
 	}
 

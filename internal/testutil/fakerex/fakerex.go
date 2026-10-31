@@ -304,7 +304,11 @@ func configCheck(path string) int {
 		return err == nil && strings.Contains(string(data), "BROKEN")
 	}
 	report := func(file string) int {
-		fmt.Printf("error %s:1: broken\n", filepath.Base(file))
+		name := filepath.Base(file)
+		if rel, err := filepath.Rel(filepath.Dir(path), file); err == nil && strings.HasPrefix(rel, "rexd/") {
+			name = rel
+		}
+		fmt.Printf("error %s:1: broken\n", name)
 		fmt.Fprintln(os.Stderr, "Error: the configuration has errors")
 		return exitConfigErrors
 	}
