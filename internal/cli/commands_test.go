@@ -446,7 +446,7 @@ func TestHelpForEveryCommand(t *testing.T) {
 		}
 	}
 	_, out, _ := e.run("help", "install")
-	for _, want := range []string{"owner/repo", "-link", "-ref"} {
+	for _, want := range []string{"owner/repo", "  --link\n", "  --ref REF\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("install help has no %q:\n%s", want, out)
 		}

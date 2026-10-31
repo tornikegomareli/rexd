@@ -41,8 +41,8 @@ func (a *app) manager() (*plugins.Manager, error) {
 
 func runSetup(ctx context.Context, a *app, args []string) error {
 	fs := a.flags("setup")
-	rexConfig := fs.String("rex-config", "", "path of Rex's init.lua (default: ask the running server)")
-	server := fs.String("server", "", "Rex server to use, as for rex -S (default: Rex's default server)")
+	rexConfig := fs.String("rex-config", "", "`path` of Rex's init.lua (default: ask the running server)")
+	server := fs.String("server", "", "Rex server `address`, as for rex -S (default: Rex's default server)")
 	noService := fs.Bool("no-service", false, "do not install a LaunchAgent; run \"rexd daemon\" yourself")
 	if err := a.parse(fs, args); err != nil {
 		return err
@@ -64,7 +64,7 @@ func runSetup(ctx context.Context, a *app, args []string) error {
 	if *noService {
 		return a.reportDaemonWithoutService(m.Dirs)
 	}
-	spec, err := serviceSpec(a.serviceLabel, m.Dirs)
+	spec, err := a.serviceSpec(m.Dirs)
 	if err != nil {
 		return err
 	}
@@ -98,13 +98,17 @@ func (a *app) reportDaemonWithoutService(dirs paths.Dirs) error {
 
 // serviceSpec describes the LaunchAgent. launchd starts programs with almost no
 // environment, so it keeps the PATH of this shell for plugins to find their tools.
-func serviceSpec(label string, dirs paths.Dirs) (service.Spec, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return service.Spec{}, err
-	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
+func (a *app) serviceSpec(dirs paths.Dirs) (service.Spec, error) {
+	exe := a.executable
+	if exe == "" {
+		var err error
+		exe, err = os.Executable()
+		if err != nil {
+			return service.Spec{}, err
+		}
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
 	}
 	env := map[string]string{}
 	for _, name := range []string{"PATH", "REXD_REX", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
@@ -113,7 +117,7 @@ func serviceSpec(label string, dirs paths.Dirs) (service.Spec, error) {
 		}
 	}
 	return service.Spec{
-		Label:   label,
+		Label:   a.serviceLabel,
 		Program: []string{exe, "daemon"},
 		Env:     env,
 		LogPath: filepath.Join(dirs.Logs(), "launchd.log"),
@@ -171,7 +175,7 @@ func runTeardown(ctx context.Context, a *app, args []string) error {
 func runInstall(ctx context.Context, a *app, args []string) error {
 	fs := a.flags("install")
 	link := fs.Bool("link", false, "link a local folder instead of copying it, for plugin development")
-	ref := fs.String("ref", "", "git branch, tag or commit to check out")
+	ref := fs.String("ref", "", "git branch, tag or commit to check out, as `ref`")
 	if err := a.parse(fs, args); err != nil {
 		return err
 	}

@@ -25,6 +25,9 @@ type Options struct {
 	// ServiceLabel names the LaunchAgent. Empty means the normal one. Tests set
 	// it, so they can never touch a real installation.
 	ServiceLabel string
+	// Executable is the program the LaunchAgent runs. Empty means this program.
+	// Tests that run in-process set it, because this program is the test binary.
+	Executable string
 }
 
 type app struct {
@@ -32,6 +35,7 @@ type app struct {
 	stderr       io.Writer
 	version      string
 	serviceLabel string
+	executable   string
 }
 
 type command struct {
@@ -53,7 +57,7 @@ func usagef(format string, args ...any) error {
 
 // Main runs rexd with args and returns the process exit status.
 func Main(args []string, opts Options) int {
-	a := &app{stdout: opts.Stdout, stderr: opts.Stderr, version: opts.Version, serviceLabel: opts.ServiceLabel}
+	a := &app{stdout: opts.Stdout, stderr: opts.Stderr, version: opts.Version, serviceLabel: opts.ServiceLabel, executable: opts.Executable}
 	if a.serviceLabel == "" {
 		a.serviceLabel = service.Label
 	}
@@ -222,9 +226,17 @@ func (a *app) printCommandHelp(w io.Writer, c *command, fs *flag.FlagSet) {
 		return
 	}
 	var flags strings.Builder
-	fs.SetOutput(&flags)
-	fs.PrintDefaults()
-	fs.SetOutput(io.Discard)
+	fs.VisitAll(func(f *flag.Flag) {
+		dashes := "--"
+		if len(f.Name) == 1 {
+			dashes = "-"
+		}
+		value, usage := flag.UnquoteUsage(f)
+		if value != "" {
+			value = " " + strings.ToUpper(value)
+		}
+		fmt.Fprintf(&flags, "  %s%s%s\n        %s\n", dashes, f.Name, value, usage)
+	})
 	if flags.Len() > 0 {
 		fmt.Fprintf(w, "\nFlags:\n%s", flags.String())
 	}

@@ -19,9 +19,9 @@ const followInterval = 250 * time.Millisecond
 
 func runLogs(ctx context.Context, a *app, args []string) error {
 	fs := a.flags("logs")
-	script := fs.String("script", "", "only this script of the plugin")
+	script := fs.String("script", "", "only this script of the plugin, by `name`")
 	daemonLog := fs.Bool("daemon", false, "the daemon's own log")
-	lines := fs.Int("n", 50, "how many lines to print")
+	lines := fs.Int("n", 50, "how many `lines` to print")
 	follow := fs.Bool("f", false, "keep printing new lines")
 	if err := a.parse(fs, args); err != nil {
 		return err
