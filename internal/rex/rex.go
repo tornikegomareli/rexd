@@ -21,7 +21,7 @@ const exitServerUnavailable = 4
 var ErrNotRunning = errors.New("Rex is not running")
 
 // ErrNotFound means the rex binary could not be found.
-var ErrNotFound = errors.New("could not find the rex command; install Rex from https://rex.superlogical.com, or set REXD_REX to its path")
+var ErrNotFound = errors.New("could not find the rex command; install Rex from https://www.superlogical.com/rex, or set REXD_REX to its path")
 
 // Client runs rex commands against one server.
 //
