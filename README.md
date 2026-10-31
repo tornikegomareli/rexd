@@ -3,7 +3,7 @@
 <h3 align="center">Install plugins for Rex, and keep them running.</h3>
 
 <p align="center">
-  <img src=".github/assets/film-install.png" width="100%" alt="A terminal: rexd install adds the bell-notify plugin, and rexd status shows its event script running" />
+  <img src=".github/assets/film-install.png" width="100%" alt="A Rex window: rexd install adds the bell-notify plugin, and rexd status shows its event script running" />
 </p>
 
 rexd is a plugin manager and process supervisor for [Rex](https://www.superlogical.com/rex). It installs a plugin from GitHub, adds its config code to Rex, and keeps its event scripts running.
@@ -31,7 +31,7 @@ The daemon starts each event script and watches it. If a script dies, the daemon
 `rexd status` shows what every script is doing, and `rexd logs` shows why one failed.
 
 <p align="center">
-  <img src=".github/assets/film-restart.png" width="100%" alt="rexd status shows a script that exited and restarts in 6 seconds, beside one that runs. rexd logs shows the error: the API key is not set" />
+  <img src=".github/assets/film-restart.png" width="100%" alt="A Rex window: rexd status shows a script that exited and restarts in 17 seconds, beside one that runs. rexd logs shows the error: the API key is not set" />
 </p>
 
 ## A broken plugin cannot cost you your setup
@@ -44,7 +44,7 @@ rexd edits your Rex config, and these rules protect it:
 - **Your keys win.** `require("rexd")` goes first in `init.lua`. In Rex the newest binding for a key wins, so anything you bind below it overrides a plugin.
 
 <p align="center">
-  <img src=".github/assets/film-check.png" width="100%" alt="rexd install refuses a plugin with a syntax error in its config code, and rexd list shows the other plugins are still installed" />
+  <img src=".github/assets/film-check.png" width="100%" alt="A Rex window: rexd install refuses a plugin with a syntax error in its config code, and rexd list shows the other plugins are still installed" />
 </p>
 
 A plugin's build steps and scripts run as you, like any program you install. Install plugins you trust.
