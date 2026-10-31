@@ -136,12 +136,11 @@ func (i *Installation) serviceSpec() (service.Spec, error) {
 	if err != nil {
 		return service.Spec{}, err
 	}
+	// Not resolved: Homebrew's link stays valid after an upgrade, and what it points
+	// to does not.
 	exe, err := os.Executable()
 	if err != nil {
 		return service.Spec{}, err
-	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
 	}
 	env := map[string]string{}
 	for _, name := range []string{"PATH", "REXD_REX", "XDG_DATA_HOME", "XDG_STATE_HOME"} {

@@ -58,6 +58,7 @@ func TestMain(m *testing.M) {
 // rig is one isolated Rex server and one isolated rexd.
 type rig struct {
 	t         *testing.T
+	binary    string // The rexd to run, or a link to it.
 	root      string
 	rexPath   string
 	server    string
@@ -85,6 +86,7 @@ func newRig(t *testing.T) *rig {
 	}
 	r := &rig{
 		t:       t,
+		binary:  rexdBinary,
 		root:    root,
 		rexPath: rexPath,
 		server:  "unix://" + filepath.Join(root, "rex.sock"),
@@ -239,7 +241,7 @@ func (r *rig) runAction(action, session string) (string, error) {
 // rexd runs the rexd command and returns its output and exit status.
 func (r *rig) rexd(args ...string) (string, int) {
 	r.t.Helper()
-	cmd := exec.Command(rexdBinary, args...)
+	cmd := exec.Command(r.binary, args...)
 	cmd.Env = r.env
 	cmd.Dir = r.root
 	var out bytes.Buffer
@@ -879,6 +881,15 @@ func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 	}
 	r := newRig(t)
 	r.newSession("first")
+	// Homebrew's bin folder links into a folder named after the version, which an
+	// upgrade removes. The agent must keep the link.
+	r.binary = filepath.Join(r.root, "brew", "bin", "rexd")
+	if err := os.MkdirAll(filepath.Dir(r.binary), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(rexdBinary, r.binary); err != nil {
+		t.Fatal(err)
+	}
 	label, err := installation.Label(paths.Dirs{
 		Data:  filepath.Join(r.root, "data", "rexd"),
 		State: filepath.Join(r.root, "state", "rexd"),
@@ -916,12 +927,8 @@ func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary, err := filepath.EvalSymlinks(rexdBinary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(plist), binary) {
-		t.Errorf("the plist does not run rexd:\n%s", plist)
+	if !strings.Contains(string(plist), "<string>"+r.binary+"</string>") {
+		t.Errorf("the plist does not run the link rexd started through:\n%s", plist)
 	}
 
 	run("install", r.plugin(probeID, "e2e_probe", "1.0"))
