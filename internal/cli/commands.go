@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -116,12 +118,26 @@ func (a *app) serviceSpec(dirs paths.Dirs) (service.Spec, error) {
 			env[name] = value
 		}
 	}
+	if path, ok := env["PATH"]; ok {
+		env["PATH"] = withoutVersionedRex(path)
+	}
 	return service.Spec{
 		Label:   a.serviceLabel,
 		Program: []string{exe, "daemon"},
 		Env:     env,
 		LogPath: filepath.Join(dirs.Logs(), "launchd.log"),
 	}, nil
+}
+
+// withoutVersionedRex drops the folder a Rex terminal adds to PATH. It names one
+// version of Rex, which a later update replaces. Without it, rex.Find uses the
+// path that always points at the current version.
+func withoutVersionedRex(path string) string {
+	folders := filepath.SplitList(path)
+	folders = slices.DeleteFunc(folders, func(folder string) bool {
+		return strings.Contains(folder, "RexServer/Versions/")
+	})
+	return strings.Join(folders, string(os.PathListSeparator))
 }
 
 func waitForDaemon(ctx context.Context, dirs paths.Dirs) bool {

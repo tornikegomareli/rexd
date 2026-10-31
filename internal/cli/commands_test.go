@@ -251,6 +251,17 @@ func TestStatusReportsAPluginThatBrokeLater(t *testing.T) {
 	}
 }
 
+func TestWithoutVersionedRex(t *testing.T) {
+	rexTerminal := "/Users/me/Library/Application Support/com.superlogical.rex/RexServer/Versions/1642/Rex Server.app/Contents/MacOS"
+	got := withoutVersionedRex("/opt/homebrew/bin:" + rexTerminal + ":/usr/bin")
+	if got != "/opt/homebrew/bin:/usr/bin" {
+		t.Fatalf("got %q", got)
+	}
+	if got := withoutVersionedRex("/usr/bin:/bin"); got != "/usr/bin:/bin" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestDescribeScript(t *testing.T) {
 	next := time.Now().Add(4 * time.Second)
 	tests := []struct {
