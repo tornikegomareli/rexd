@@ -32,8 +32,6 @@ type Client struct {
 	Path string
 	// Server is passed as -S. Empty means Rex's default server.
 	Server string
-	// Env holds extra environment variables for every command.
-	Env []string
 }
 
 // Version describes the rex binary.
@@ -128,7 +126,7 @@ func (c Client) environ() []string {
 		}
 		env = append(env, kv)
 	}
-	return append(env, c.Env...)
+	return env
 }
 
 func (c Client) run(ctx context.Context, args ...string) (string, error) {

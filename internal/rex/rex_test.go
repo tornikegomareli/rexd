@@ -18,7 +18,7 @@ func TestMain(m *testing.M) {
 }
 
 func client(f *fakerex.Fake) rex.Client {
-	return rex.Client{Path: f.Path, Env: f.Env}
+	return rex.Client{Path: f.Path}
 }
 
 func TestVersion(t *testing.T) {

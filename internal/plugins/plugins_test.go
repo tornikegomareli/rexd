@@ -58,7 +58,7 @@ func newBareEnv(t *testing.T) *env {
 		dirs:   dirs,
 		init:   init,
 		out:    out,
-		m:      &Manager{Dirs: dirs, Rex: rex.Client{Path: fake.Path, Env: fake.Env}, Out: out},
+		m:      &Manager{Dirs: dirs, Rex: rex.Client{Path: fake.Path}, Out: out},
 		layout: rexconfig.Layout{Init: init},
 	}
 }

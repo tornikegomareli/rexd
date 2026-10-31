@@ -47,8 +47,6 @@ type Options struct {
 	// FindRex locates the rex binary. It runs on every reload, so a daemon that
 	// started before Rex was installed finds it later.
 	FindRex func() (string, error)
-	// RexEnv holds extra environment variables for rex commands.
-	RexEnv []string
 	// LogOutput also receives the daemon's log, such as a terminal. It may be nil.
 	LogOutput io.Writer
 	// Timing overrides the supervisor's delays when set.
@@ -113,7 +111,7 @@ func Run(ctx context.Context, opts Options) error {
 		timing = *opts.Timing
 	}
 	return supervisor.New(supervisor.Options{
-		Load:       func() (supervisor.Desired, error) { return LoadDesired(dirs, opts.FindRex, opts.RexEnv) },
+		Load:       func() (supervisor.Desired, error) { return LoadDesired(dirs, opts.FindRex) },
 		StatusPath: dirs.StatusFile(),
 		Logger:     log,
 		Timing:     timing,
@@ -138,7 +136,7 @@ func acquireDaemonLock(dirs paths.Dirs) (*lockfile.Lock, error) {
 // LoadDesired works out which scripts should run from the state and each
 // plugin's manifest. A plugin it cannot read is reported and skipped, so one bad
 // plugin does not stop the others.
-func LoadDesired(dirs paths.Dirs, findRex func() (string, error), rexEnv []string) (supervisor.Desired, error) {
+func LoadDesired(dirs paths.Dirs, findRex func() (string, error)) (supervisor.Desired, error) {
 	current, err := state.Load(dirs.StateFile())
 	if err != nil {
 		return supervisor.Desired{}, err
@@ -148,7 +146,7 @@ func LoadDesired(dirs paths.Dirs, findRex func() (string, error), rexEnv []strin
 		return supervisor.Desired{}, err
 	}
 	desired := supervisor.Desired{
-		Client:       rex.Client{Path: path, Server: current.Settings.Server, Env: rexEnv},
+		Client:       rex.Client{Path: path, Server: current.Settings.Server},
 		PluginErrors: map[string]string{},
 	}
 	for _, plugin := range current.SortedPlugins() {

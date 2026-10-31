@@ -34,10 +34,6 @@ func newCLI(t *testing.T) *cliEnv {
 	root := t.TempDir()
 	fake := fakerex.New(t)
 	t.Setenv("REXD_REX", fake.Path)
-	for _, kv := range fake.Env {
-		name, value, _ := strings.Cut(kv, "=")
-		t.Setenv(name, value)
-	}
 	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
 	dirs, err := paths.Default()

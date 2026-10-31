@@ -91,7 +91,6 @@ func startDaemon(t *testing.T, dirs paths.Dirs, fake *fakerex.Fake) *runningDaem
 		d.done <- Run(ctx, Options{
 			Dirs:    dirs,
 			FindRex: func() (string, error) { return fake.Path, nil },
-			RexEnv:  fake.Env,
 			Timing:  &timing,
 		})
 	}()
@@ -315,11 +314,11 @@ func TestLoadDesired(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := LoadDesired(dirs, func() (string, error) { return "/bin/rex", nil }, []string{"X=1"})
+	got, err := LoadDesired(dirs, func() (string, error) { return "/bin/rex", nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Client.Path != "/bin/rex" || got.Client.Server != "unix:///s.sock" || !slices.Equal(got.Client.Env, []string{"X=1"}) {
+	if got.Client.Path != "/bin/rex" || got.Client.Server != "unix:///s.sock" {
 		t.Errorf("client = %+v", got.Client)
 	}
 	if len(got.Specs) != 1 {
@@ -345,7 +344,7 @@ func TestLoadDesired(t *testing.T) {
 }
 
 func TestLoadDesiredReportsAMissingRex(t *testing.T) {
-	_, err := LoadDesired(testDirs(t), func() (string, error) { return "", errors.New("no rex") }, nil)
+	_, err := LoadDesired(testDirs(t), func() (string, error) { return "", errors.New("no rex") })
 	if err == nil || err.Error() != "no rex" {
 		t.Fatalf("err = %v", err)
 	}

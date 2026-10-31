@@ -292,7 +292,7 @@ func TestRemoveAllKeepsTheUsersFilesInTheFolder(t *testing.T) {
 
 func TestCheck(t *testing.T) {
 	f := fakerex.New(t)
-	client := rex.Client{Path: f.Path, Env: f.Env}
+	client := rex.Client{Path: f.Path}
 	l := layout(t)
 	writeInit(t, l, "")
 	src := filepath.Join(t.TempDir(), "config.lua")

@@ -98,7 +98,7 @@ func (h *harness) run(timing Timing) {
 			h.mu.Lock()
 			defer h.mu.Unlock()
 			return Desired{
-				Client:       rex.Client{Path: h.fake.Path, Env: h.fake.Env},
+				Client:       rex.Client{Path: h.fake.Path},
 				Specs:        slices.Clone(h.specs),
 				PluginErrors: map[string]string{},
 			}, h.loadErr
@@ -236,7 +236,7 @@ func TestPassesTheServerToRex(t *testing.T) {
 	sup := New(Options{
 		Load: func() (Desired, error) {
 			return Desired{
-				Client: rex.Client{Path: h.fake.Path, Env: h.fake.Env, Server: "unix:///custom.sock"},
+				Client: rex.Client{Path: h.fake.Path, Server: "unix:///custom.sock"},
 				Specs:  h.specs,
 			}, nil
 		},
@@ -523,7 +523,7 @@ func TestStopsScriptsLeftByADeadDaemon(t *testing.T) {
 	spec := h.script("watch", "")
 
 	orphan := exec.Command(h.fake.Path, "do", spec.Path, "--all")
-	orphan.Env = append(os.Environ(), append(h.fake.Env, "REX_SESSION=session:one")...)
+	orphan.Env = append(os.Environ(), "REX_SESSION=session:one")
 	orphan.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := orphan.Start(); err != nil {
 		t.Fatal(err)
@@ -671,7 +671,7 @@ func TestReportsPluginErrors(t *testing.T) {
 	sup := New(Options{
 		Load: func() (Desired, error) {
 			return Desired{
-				Client:       rex.Client{Path: h.fake.Path, Env: h.fake.Env},
+				Client:       rex.Client{Path: h.fake.Path},
 				PluginErrors: map[string]string{"acme.broken": "no manifest"},
 			}, nil
 		},

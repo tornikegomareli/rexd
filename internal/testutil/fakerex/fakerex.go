@@ -77,8 +77,6 @@ func build() (string, error) {
 type Fake struct {
 	// Path is the program to run as rex.
 	Path string
-	// Env holds the variables that make Path behave as the fake.
-	Env []string
 
 	dir string
 }
@@ -101,7 +99,8 @@ func New(t testing.TB) *Fake {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	f := &Fake{Path: path, Env: []string{EnvDir + "=" + dir}, dir: dir}
+	t.Setenv(EnvDir, dir)
+	f := &Fake{Path: path, dir: dir}
 	f.SetSessions("session:one")
 	return f
 }
