@@ -41,8 +41,13 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 }
 
 // CopyDir copies the folder src to dst, which must not exist yet. It keeps file
-// modes and symbolic links.
+// modes and symbolic links inside the folder. If src itself is a link, it copies
+// what the link points to.
 func CopyDir(src, dst string) error {
+	src, err := filepath.EvalSymlinks(src)
+	if err != nil {
+		return err
+	}
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
