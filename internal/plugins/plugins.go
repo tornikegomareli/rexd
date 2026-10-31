@@ -100,11 +100,28 @@ func (u undoStack) run(out io.Writer) {
 func (m *Manager) entries(current *state.State, layout rexconfig.Layout) []rexconfig.Entry {
 	var entries []rexconfig.Entry
 	for _, p := range current.SortedPlugins() {
-		if _, err := os.Stat(layout.Module(p.ID)); err == nil {
-			entries = append(entries, rexconfig.Entry{ID: p.ID, Version: p.Version, Dir: m.Dirs.Plugin(p.ID)})
+		if fileExists(layout.Module(p.ID)) {
+			entries = append(entries, m.entry(p))
 		}
 	}
 	return entries
+}
+
+func (m *Manager) entry(p *state.Plugin) rexconfig.Entry {
+	return rexconfig.Entry{ID: p.ID, Version: p.Version, Dir: m.Dirs.Plugin(p.ID)}
+}
+
+// CheckConfigCode says if a plugin has config code in Rex, and what Rex's checker
+// says about that code now.
+func (m *Manager) CheckConfigCode(ctx context.Context, current *state.State, p *state.Plugin) (has bool, err error) {
+	if current.Settings.RexConfig == "" {
+		return false, nil
+	}
+	layout := rexconfig.Layout{Init: current.Settings.RexConfig}
+	if !fileExists(layout.Module(p.ID)) {
+		return false, nil
+	}
+	return true, layout.Check(ctx, m.client(current), m.entry(p))
 }
 
 // reload tells Rex to read its config. A failure here is not fatal, because the

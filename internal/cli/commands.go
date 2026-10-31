@@ -13,7 +13,6 @@ import (
 	"github.com/tornikegomareli/rexd/internal/paths"
 	"github.com/tornikegomareli/rexd/internal/plugins"
 	"github.com/tornikegomareli/rexd/internal/rex"
-	"github.com/tornikegomareli/rexd/internal/rexconfig"
 	"github.com/tornikegomareli/rexd/internal/state"
 )
 
@@ -248,19 +247,11 @@ func (a *app) gatherStatus(ctx context.Context) (*statusReport, error) {
 		report.Daemon.Problem = status.Daemon.Problem
 	}
 
-	client := m.Rex
-	client.Server = current.Settings.Server
-	layout := rexconfig.Layout{Init: current.Settings.RexConfig}
 	for _, p := range current.SortedPlugins() {
 		plugin := pluginReport{ID: p.ID, Version: p.Version, Kind: string(p.Kind), Scripts: []state.ScriptStatus{}}
-		if current.Settings.RexConfig != "" {
-			if _, err := os.Stat(layout.Module(p.ID)); err == nil {
-				plugin.HasConfig = true
-				entry := rexconfig.Entry{ID: p.ID, Version: p.Version, Dir: m.Dirs.Plugin(p.ID)}
-				if err := layout.Check(ctx, client, entry); err != nil {
-					plugin.Problem = "config code: " + err.Error()
-				}
-			}
+		plugin.HasConfig, err = m.CheckConfigCode(ctx, current, p)
+		if err != nil {
+			plugin.Problem = "config code: " + err.Error()
 		}
 		if status != nil {
 			for _, script := range status.Scripts {
