@@ -623,6 +623,34 @@ func TestUpdateReportsAPluginGitCannotRead(t *testing.T) {
 	}
 }
 
+// A build step can change a tracked file. That must not stop later updates.
+func TestUpdateAfterABuildChangedATrackedFile(t *testing.T) {
+	e := newEnv(t)
+	repo := pluginFiles(t, "acme.foo", "1.0", configManifest+`
+[[build]]
+run = ["sh", "-c", "echo built >> lock.txt"]
+`, map[string]string{"rex/config.lua": "-- one", "lock.txt": "v1\n"})
+	runGit(t, repo, "init", "-q", "-b", "main")
+	runGit(t, repo, "add", "-A")
+	runGit(t, repo, "commit", "-q", "-m", "first")
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindGit, Location: "file://" + repo}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(repo, "lock.txt"), "v2\n")
+	commitChange(t, repo, "2.0", "-- two")
+
+	results, err := e.m.Update(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !results[0].Changed || results[0].To != "2.0" {
+		t.Fatalf("results = %+v", results)
+	}
+	if got := read(t, filepath.Join(e.dirs.Plugin("acme.foo"), "lock.txt")); got != "v2\nbuilt\n" {
+		t.Errorf("lock.txt = %q", got)
+	}
+}
+
 func TestUpdateBrokenVersionKeepsTheOldOne(t *testing.T) {
 	e := newEnv(t)
 	repo := gitPlugin(t, "acme.foo", "1.0", "-- one")

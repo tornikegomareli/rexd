@@ -557,10 +557,8 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 				result.Note = "pinned to " + p.Ref + "; remove and install it to change that"
 				return result, nil, nil
 			}
-			if err := fsutil.CopyDir(dir, work); err != nil {
-				return result, nil, err
-			}
-			if _, err := git(ctx, work, "pull", "--ff-only", "--quiet"); err != nil {
+			// A fresh clone, because the installed folder holds what the build left.
+			if _, err := git(ctx, "", "clone", "--quiet", "--branch", branch, p.Source, work); err != nil {
 				return result, nil, err
 			}
 			commit, err = git(ctx, work, "rev-parse", "HEAD")
