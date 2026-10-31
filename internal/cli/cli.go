@@ -126,8 +126,9 @@ plugin's build steps run on install, so install plugins you trust.`,
 			name: "update", args: "[PLUGIN...]",
 			summary: "Update plugins, all of them if none are named",
 			help: `
-A new version is built beside the old one and checked by Rex before it replaces
-the old one. A plugin installed at a tag or commit stays there.`,
+A new version is built beside the old one, and Rex checks its config code. If the
+check fails, the old version stays. Rex does not check event scripts. A plugin
+installed at a tag or commit stays there.`,
 			run: runUpdate,
 		},
 		{name: "list", args: "[--json]", summary: "List installed plugins", run: runList},

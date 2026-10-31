@@ -34,13 +34,14 @@ The daemon starts each event script and watches it. If a script dies, the daemon
   <img src=".github/assets/film-restart.png" width="100%" alt="A Rex window: rexd status shows a script that exited and restarts in 17 seconds, beside one that runs. rexd logs shows the error: the API key is not set" />
 </p>
 
-## A broken plugin cannot cost you your setup
+## A broken plugin does not break your Rex config
 
 rexd edits your Rex config, and these rules protect it:
 
-- **Rex checks every change.** rexd loads a plugin in Rex's own checker before keeping it. If the check fails, every step undoes itself and your config stays as it was.
-- **An update never replaces a working version with a broken one.** The new version is built beside the old one, and it only moves into place after it passes the check.
-- **One broken plugin stays contained.** If a plugin breaks later, its error stays with it, and your own keys and other plugins keep working. `rexd status` says what is wrong.
+- **Rex checks config code.** rexd loads a plugin's config code in Rex's own checker before keeping it. If the check fails, every step undoes itself and your config stays as it was.
+- **A failed check keeps the old version.** The new version is built in a staging folder and swapped in. If its config code fails the check, the old version goes back. A linked plugin has no old copy to go back to.
+- **Event scripts are not checked.** A broken script installs and updates like a working one. It then shows as failing in `rexd status`, and `rexd logs` shows why.
+- **A plugin that breaks later stays contained.** Its error stays with it, and your own keys and other plugins keep working. `rexd status` says what is wrong. If Rex's checker rejects it, rexd names the plugin and refuses other changes until you fix or remove it.
 - **Your keys win.** `require("rexd")` goes first in `init.lua`. In Rex the newest binding for a key wins, so anything you bind below it overrides a plugin.
 
 <p align="center">
