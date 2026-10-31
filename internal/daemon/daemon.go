@@ -202,6 +202,38 @@ func Running(dirs paths.Dirs) (pid int, running bool, err error) {
 	return 0, false, lock.Release()
 }
 
+// Stop asks a running daemon to exit and waits until it has. It reports whether a
+// daemon was running.
+func Stop(ctx context.Context, dirs paths.Dirs, timeout time.Duration) (bool, error) {
+	pid, running, err := Running(dirs)
+	if err != nil || !running {
+		return false, err
+	}
+	if pid != 0 {
+		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+			return true, fmt.Errorf("signaling the daemon: %w", err)
+		}
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		_, running, err := Running(dirs)
+		if err != nil {
+			return true, err
+		}
+		if !running {
+			return true, nil
+		}
+		if time.Now().After(deadline) {
+			return true, fmt.Errorf("the daemon did not stop within %s", timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return true, ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
 // Notify tells a running daemon to read the state again. It reports whether a
 // daemon was there to tell.
 func Notify(dirs paths.Dirs) (bool, error) {

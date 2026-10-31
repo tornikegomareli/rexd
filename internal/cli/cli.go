@@ -12,6 +12,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+
+	"github.com/tornikegomareli/rexd/internal/service"
 )
 
 // Options carries what the binary knows about itself and where it writes.
@@ -20,12 +22,16 @@ type Options struct {
 	Version string
 	Stdout  io.Writer
 	Stderr  io.Writer
+	// ServiceLabel names the LaunchAgent. Empty means the normal one. Tests set
+	// it, so they can never touch a real installation.
+	ServiceLabel string
 }
 
 type app struct {
-	stdout  io.Writer
-	stderr  io.Writer
-	version string
+	stdout       io.Writer
+	stderr       io.Writer
+	version      string
+	serviceLabel string
 }
 
 type command struct {
@@ -47,7 +53,10 @@ func usagef(format string, args ...any) error {
 
 // Main runs rexd with args and returns the process exit status.
 func Main(args []string, opts Options) int {
-	a := &app{stdout: opts.Stdout, stderr: opts.Stderr, version: opts.Version}
+	a := &app{stdout: opts.Stdout, stderr: opts.Stderr, version: opts.Version, serviceLabel: opts.ServiceLabel}
+	if a.serviceLabel == "" {
+		a.serviceLabel = service.Label
+	}
 	if a.stdout == nil {
 		a.stdout = os.Stdout
 	}
@@ -94,6 +103,63 @@ func Main(args []string, opts Options) int {
 
 func (a *app) commands() []command {
 	return []command{
+		{
+			name: "setup", args: "[--rex-config PATH] [--server ADDRESS] [--no-service]",
+			summary: "Connect rexd to Rex and start the daemon",
+			help: `
+Adds require("rexd") to the top of Rex's init.lua, writes the generated rexd.lua
+beside it, and installs a LaunchAgent that keeps the daemon running. It is safe
+to run again, and it repairs whatever is missing.`,
+			run: runSetup,
+		},
+		{
+			name: "install", args: "SOURCE [--link] [--ref REF]",
+			summary: "Install a plugin",
+			help: `
+SOURCE is one of:
+
+  owner/repo          a GitHub repository
+  owner/repo@ref      a GitHub repository at a branch, tag or commit
+  https://host/a.git  any git URL
+  ./path              a local folder, which is copied
+
+Rex's own checker loads the plugin's config code before anything is kept. A
+plugin's build steps run on install, so install plugins you trust.`,
+			run: runInstall,
+		},
+		{name: "remove", args: "PLUGIN", summary: "Remove a plugin", run: runRemove},
+		{
+			name: "update", args: "[PLUGIN...]",
+			summary: "Update plugins, all of them if none are named",
+			help: `
+A new version is built beside the old one and checked by Rex before it replaces
+the old one. A plugin installed at a tag or commit stays there.`,
+			run: runUpdate,
+		},
+		{name: "list", args: "[--json]", summary: "List installed plugins", run: runList},
+		{name: "status", args: "[--json]", summary: "Show the daemon, plugins and event scripts", run: runStatus},
+		{
+			name: "logs", args: "[PLUGIN] [--script NAME] [--daemon] [-n LINES] [-f]",
+			summary: "Print the output of a plugin's event scripts",
+			run:     runLogs,
+		},
+		{
+			name: "teardown", args: "[--purge] [--no-service]",
+			summary: "Disconnect rexd from Rex and stop the daemon",
+			help: `
+Removes the line from init.lua, the generated files and the LaunchAgent. Plugins
+stay installed, and the next "rexd setup" brings them back. With --purge they are
+deleted too, along with rexd's state and logs.`,
+			run: runTeardown,
+		},
+		{
+			name: "daemon", args: "",
+			summary: "Run the daemon in the foreground",
+			help: `
+"rexd setup" arranges for this to run on macOS. On other systems, run it under
+your init system, such as a systemd user service.`,
+			run: runDaemon,
+		},
 		{name: "help", args: "[command]", summary: "Show help for rexd or one of its commands", run: runHelp},
 		{name: "version", args: "", summary: "Print the version", run: runVersion},
 	}
@@ -112,7 +178,7 @@ func (a *app) printUsage(w io.Writer) {
 	fmt.Fprint(w, "rexd installs plugins for Rex and keeps their event scripts running.\n\n")
 	fmt.Fprint(w, "Usage:\n  rexd <command> [arguments]\n\nCommands:\n")
 	for _, c := range a.commands() {
-		fmt.Fprintf(w, "  %-9s  %s\n", c.name, c.summary)
+		fmt.Fprintf(w, "  %-8s  %s\n", c.name, c.summary)
 	}
 	fmt.Fprint(w, "\nRun \"rexd help <command>\" for more about a command.\n")
 }
@@ -124,17 +190,27 @@ func (a *app) flags(cmd string) *flag.FlagSet {
 	return fs
 }
 
-// parse parses args into fs and turns flag errors into usage errors.
+// parse parses args into fs and turns flag errors into usage errors. Flags may
+// come after positional arguments, as in "rexd install ./plugin --link", which
+// the flag package alone does not allow.
 func (a *app) parse(fs *flag.FlagSet, args []string) error {
-	err := fs.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		a.printCommandHelp(a.stdout, a.find(fs.Name()), fs)
-		return flag.ErrHelp
+	var positional []string
+	for {
+		err := fs.Parse(args)
+		if errors.Is(err, flag.ErrHelp) {
+			a.printCommandHelp(a.stdout, a.find(fs.Name()), fs)
+			return flag.ErrHelp
+		}
+		if err != nil {
+			return usageError{err.Error()}
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		positional = append(positional, fs.Arg(0))
+		args = fs.Args()[1:]
 	}
-	if err != nil {
-		return usageError{err.Error()}
-	}
-	return nil
+	return fs.Parse(append([]string{"--"}, positional...))
 }
 
 func (a *app) printCommandHelp(w io.Writer, c *command, fs *flag.FlagSet) {

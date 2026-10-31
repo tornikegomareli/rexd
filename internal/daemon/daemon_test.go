@@ -286,6 +286,24 @@ func TestSIGTERMStopsTheDaemonAndItsScripts(t *testing.T) {
 	}
 }
 
+func TestStop(t *testing.T) {
+	dirs := testDirs(t)
+	if stopped, err := Stop(context.Background(), dirs, time.Second); stopped || err != nil {
+		t.Fatalf("without a daemon: stopped %v, err %v", stopped, err)
+	}
+	d := startDaemon(t, dirs, fakerex.New(t))
+	stopped, err := Stop(context.Background(), dirs, waitFor)
+	if err != nil || !stopped {
+		t.Fatalf("stopped %v, err %v", stopped, err)
+	}
+	if _, running, _ := Running(dirs); running {
+		t.Fatal("still running")
+	}
+	if err := d.stop(t); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadDesired(t *testing.T) {
 	dirs := testDirs(t)
 	addPlugin(t, dirs, "acme.good", "", 3)
