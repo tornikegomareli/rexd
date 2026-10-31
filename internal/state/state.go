@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/tornikegomareli/rexd/internal/fsutil"
@@ -103,14 +104,6 @@ func (s *State) SortedPlugins() []*Plugin {
 	for _, p := range s.Plugins {
 		plugins = append(plugins, p)
 	}
-	slices.SortFunc(plugins, func(a, b *Plugin) int {
-		switch {
-		case a.ID < b.ID:
-			return -1
-		case a.ID > b.ID:
-			return 1
-		}
-		return 0
-	})
+	slices.SortFunc(plugins, func(a, b *Plugin) int { return strings.Compare(a.ID, b.ID) })
 	return plugins
 }

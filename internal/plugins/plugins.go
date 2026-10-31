@@ -384,7 +384,7 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	if _, ok := current.Plugins[id]; !ok {
 		return fmt.Errorf("%s is not installed", id)
 	}
-	_, hadModule := os.Stat(layout.Module(id))
+	hadModule := fileExists(layout.Module(id))
 
 	delete(current.Plugins, id)
 	if err := layout.RemoveModule(id); err != nil {
@@ -396,7 +396,7 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	if err := current.Save(m.Dirs.StateFile()); err != nil {
 		return err
 	}
-	if hadModule == nil {
+	if hadModule {
 		m.reload(ctx, m.client(current))
 	}
 	m.notifyDaemon(false)
