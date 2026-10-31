@@ -141,7 +141,8 @@ func (l Layout) RemoveModule(id string) error {
 	return nil
 }
 
-// RemoveAll deletes rexd.lua and every plugin's config code.
+// RemoveAll deletes rexd.lua and every plugin's config code. The rexd folder goes
+// only if that leaves it empty, because the user may keep files of their own there.
 func (l Layout) RemoveAll() error {
 	if err := l.checkIndexIsOurs(); err != nil {
 		return err
@@ -149,7 +150,11 @@ func (l Layout) RemoveAll() error {
 	if err := os.Remove(l.Index()); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return os.RemoveAll(l.ModuleRoot())
+	if err := os.RemoveAll(filepath.Join(l.ModuleRoot(), "plugins")); err != nil {
+		return err
+	}
+	_ = os.Remove(l.ModuleRoot()) // Fails when not empty, which is fine.
+	return nil
 }
 
 // Check loads one plugin's config code in Rex's checker, without the pcall that

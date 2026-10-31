@@ -260,6 +260,36 @@ func TestRemoveAll(t *testing.T) {
 	}
 }
 
+func TestRemoveAllKeepsTheUsersFilesInTheFolder(t *testing.T) {
+	l := layout(t)
+	writeInit(t, l, "")
+	mine := filepath.Join(l.ModuleRoot(), "mine.lua")
+	if err := os.MkdirAll(l.ModuleRoot(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mine, []byte("-- mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "config.lua")
+	os.WriteFile(src, nil, 0o644)
+	if err := l.InstallModule("acme.foo", src, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.WriteIndex(nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := l.RemoveAll(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, mine); got != "-- mine" {
+		t.Errorf("the user's file = %q", got)
+	}
+	if _, err := os.Stat(l.Module("acme.foo")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("rexd's file is still there: %v", err)
+	}
+}
+
 func TestCheck(t *testing.T) {
 	f := fakerex.New(t)
 	client := rex.Client{Path: f.Path, Env: f.Env}
