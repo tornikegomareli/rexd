@@ -714,3 +714,64 @@ func TestDefaultTimingMatchesTheDocs(t *testing.T) {
 		t.Fatalf("timing = %+v", timing)
 	}
 }
+
+// runLeavingAChild runs a script that starts a helper in its process group, and
+// reports whether the helper outlives the supervisor.
+func runLeavingAChild(t *testing.T, rest string, runFor time.Duration) bool {
+	t.Helper()
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "child.pid")
+	fake := filepath.Join(dir, "rex")
+	program := "#!/bin/sh\ncase \"$*\" in\n*\" ls\"*) echo session:1; exit 0;;\nesac\n" +
+		"sleep 120 </dev/null >/dev/null 2>&1 &\necho $! > " + pidFile + "\n" + rest + "\n"
+	if err := os.WriteFile(fake, []byte(program), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "s.lua")
+	if err := os.WriteFile(script, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	timing := fastTiming()
+	timing.BackoffMin, timing.BackoffMax = time.Hour, time.Hour
+	s := New(Options{
+		Load: func() (Desired, error) {
+			return Desired{
+				Client: rex.Client{Path: fake},
+				Specs:  []Spec{{Plugin: "a.b", Script: "s", Path: script, Dir: dir, LogPath: filepath.Join(dir, "s.log"), Fingerprint: "1"}},
+			}, nil
+		},
+		StatusPath: filepath.Join(dir, "status.json"),
+		Timing:     timing,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, make(chan struct{})) }()
+	time.Sleep(runFor)
+	cancel()
+	<-done
+
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
+	time.Sleep(300 * time.Millisecond)
+	return syscall.Kill(pid, 0) == nil
+}
+
+func TestACrashedScriptLeavesNoProcessBehind(t *testing.T) {
+	if runLeavingAChild(t, "exit 1", 1500*time.Millisecond) {
+		t.Error("the helper of a crashed script is still running")
+	}
+}
+
+// Background jobs of sh ignore SIGINT, so the stop signal alone does not reach them.
+func TestAStoppedScriptLeavesNoProcessBehind(t *testing.T) {
+	if runLeavingAChild(t, "wait", time.Second) {
+		t.Error("the helper of a stopped script is still running")
+	}
+}

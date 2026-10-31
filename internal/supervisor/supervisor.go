@@ -512,6 +512,8 @@ func (s *Supervisor) handleExit(key string, run, code int, waitErr error, ended 
 		return
 	}
 	stopTimer(u.killTimer)
+	// Whatever the script started goes with it, or each restart would leave more.
+	signalGroup(u.pid, syscall.SIGKILL)
 	u.pid = 0
 	u.lastRan = ended.Sub(u.startedAt)
 	s.log.Info("script exited", "plugin", u.spec.Plugin, "script", u.spec.Script, "status", code, "ran", u.lastRan.Round(time.Millisecond))
