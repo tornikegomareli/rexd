@@ -602,6 +602,34 @@ func TestLoadErrorKeepsWhatIsRunning(t *testing.T) {
 	}
 }
 
+// The daemon can start at login before Rex is installed, or during a Rex update.
+func TestRetriesAFailedLoadByItself(t *testing.T) {
+	h := newHarness(t)
+	h.setSpecs(h.script("watch", ""))
+	h.mu.Lock()
+	h.loadErr = errors.New("could not find the rex command")
+	h.mu.Unlock()
+	h.run(fastTiming())
+
+	h.eventually("the problem in the status", func() bool {
+		status, err := state.LoadStatus(h.status)
+		return err == nil && status != nil && strings.Contains(status.Daemon.Problem, "could not find the rex command")
+	})
+
+	h.mu.Lock()
+	h.loadErr = nil
+	h.mu.Unlock()
+	// Nothing sends a reload here.
+	h.waitState("watch", state.ScriptRunning)
+	status, err := state.LoadStatus(h.status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Daemon.Problem != "" {
+		t.Errorf("the problem is still reported: %q", status.Daemon.Problem)
+	}
+}
+
 func TestAScriptThatCannotStartIsRetried(t *testing.T) {
 	h := newHarness(t)
 	spec := h.script("gone", "")

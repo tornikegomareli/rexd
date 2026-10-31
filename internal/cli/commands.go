@@ -305,6 +305,8 @@ type statusReport struct {
 type daemonReport struct {
 	Running bool `json:"running"`
 	PID     int  `json:"pid,omitempty"`
+	// Problem says why a running daemon cannot do its work right now.
+	Problem string `json:"problem,omitempty"`
 }
 
 type pluginReport struct {
@@ -364,6 +366,7 @@ func (a *app) gatherStatus(ctx context.Context) (*statusReport, error) {
 	}
 	if status != nil {
 		report.Rex = status.Daemon.Rex
+		report.Daemon.Problem = status.Daemon.Problem
 	}
 
 	client := m.Rex
@@ -399,6 +402,9 @@ func (a *app) printStatus(report *statusReport) {
 	if report.Daemon.Running {
 		fmt.Fprintf(a.stdout, "Daemon: running, pid %d\n", report.Daemon.PID)
 		fmt.Fprintf(a.stdout, "Rex:    %s\n", describeRex(report.Rex))
+		if report.Daemon.Problem != "" {
+			fmt.Fprintf(a.stdout, "Problem: %s\n", report.Daemon.Problem)
+		}
 	} else {
 		fmt.Fprintf(a.stdout, "Daemon: not running. Run \"rexd setup\" to start it.\n")
 	}

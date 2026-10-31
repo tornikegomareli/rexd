@@ -126,6 +126,11 @@ type Supervisor struct {
 	probeDelay   time.Duration
 	lastProbeErr string
 
+	// problem says why Load failed. reloadTimer tries again.
+	problem     string
+	reloadTimer *time.Timer
+	stopping    bool
+
 	startedAt time.Time
 	dirty     bool
 }
@@ -254,10 +259,23 @@ func runsScript(pid int, path string) bool {
 
 // reconcile starts and stops scripts to match what Load returns.
 func (s *Supervisor) reconcile() {
+	if s.stopping {
+		return
+	}
+	stopTimer(s.reloadTimer)
 	desired, err := s.opts.Load()
 	if err != nil {
-		s.log.Error("could not read what should run; keeping what is running", "error", err)
+		if message := err.Error(); message != s.problem {
+			s.log.Error("could not read what should run; keeping what is running", "error", err)
+			s.problem = message
+			s.dirty = true
+		}
+		s.scheduleReload()
 		return
+	}
+	if s.problem != "" {
+		s.log.Info("can read what should run again")
+		s.problem = ""
 	}
 	s.client = desired.Client
 	s.pluginErrors = desired.PluginErrors
@@ -294,6 +312,13 @@ func (s *Supervisor) reconcile() {
 	if s.anyWaiting() {
 		s.requestProbe()
 	}
+}
+
+// scheduleReload tries Load again later. No one may ever send a reload: when the
+// daemon starts at login before Rex is installed, nothing else wakes it.
+func (s *Supervisor) scheduleReload() {
+	stopTimer(s.reloadTimer)
+	s.reloadTimer = time.AfterFunc(s.opts.Timing.ProbeMax, func() { s.post(s.reconcile) })
 }
 
 // reset gives a stopped unit a new spec and a clean record.
@@ -361,6 +386,10 @@ func (s *Supervisor) handleProbe(sessions []string, err error) {
 		if message := err.Error(); !errors.Is(err, rex.ErrNotRunning) && message != s.lastProbeErr {
 			s.log.Warn("could not ask Rex", "error", err)
 			s.lastProbeErr = message
+		}
+		// The rex binary itself may have moved, and Load finds it again.
+		if !errors.Is(err, rex.ErrNotRunning) {
+			s.scheduleReload()
 		}
 	case len(sessions) == 0:
 		next = state.RexNoSessions
@@ -580,7 +609,9 @@ func signalGroup(pid int, sig syscall.Signal) {
 
 // shutdown stops every script and removes the status file.
 func (s *Supervisor) shutdown() {
+	s.stopping = true
 	stopTimer(s.probeTimer)
+	stopTimer(s.reloadTimer)
 	for _, key := range s.sortedKeys() {
 		u := s.units[key]
 		u.removing, u.pending = true, nil
@@ -638,6 +669,7 @@ func (s *Supervisor) flushStatus() {
 			StartedAt: s.startedAt,
 			UpdatedAt: time.Now(),
 			Rex:       s.rexState,
+			Problem:   s.problem,
 		},
 		Scripts:      []state.ScriptStatus{},
 		PluginErrors: s.pluginErrors,

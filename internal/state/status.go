@@ -58,6 +58,8 @@ type DaemonStatus struct {
 	StartedAt time.Time `json:"started_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Rex       RexState  `json:"rex"`
+	// Problem says why the daemon cannot do its work right now. It keeps trying.
+	Problem string `json:"problem,omitempty"`
 }
 
 // ScriptStatus describes one event script.
