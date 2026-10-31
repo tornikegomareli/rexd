@@ -247,8 +247,12 @@ func TestStatusReportsAPluginThatBrokeLater(t *testing.T) {
 	src := samplePlugin(t, "acme.sample", "1.0")
 	e.mustRun("install", src, "--link")
 	os.WriteFile(filepath.Join(src, "config.lua"), []byte("BROKEN"), 0o644)
-	if out := e.mustRun("status"); !strings.Contains(out, "acme.sample: config code:") {
+	out := e.mustRun("status")
+	if !strings.Contains(out, "acme.sample: config code:") {
 		t.Errorf("status:\n%s", out)
+	}
+	if !strings.Contains(out, "1.0      error") || strings.Contains(out, "loaded") {
+		t.Errorf("the table must not call broken config code loaded:\n%s", out)
 	}
 }
 

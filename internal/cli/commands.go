@@ -189,6 +189,8 @@ type pluginReport struct {
 	Kind    string `json:"kind"`
 	// HasConfig says whether the plugin has config code in Rex.
 	HasConfig bool `json:"has_config"`
+	// ConfigBroken says Rex's checker rejects that config code.
+	ConfigBroken bool `json:"config_broken,omitempty"`
 	// Problem says why the plugin does not work, if something is wrong with it.
 	Problem string               `json:"problem,omitempty"`
 	Scripts []state.ScriptStatus `json:"scripts"`
@@ -251,6 +253,7 @@ func (a *app) gatherStatus(ctx context.Context) (*statusReport, error) {
 		plugin := pluginReport{ID: p.ID, Version: p.Version, Kind: string(p.Kind), Scripts: []state.ScriptStatus{}}
 		plugin.HasConfig, err = m.CheckConfigCode(ctx, current, p)
 		if err != nil {
+			plugin.ConfigBroken = true
 			plugin.Problem = "config code: " + err.Error()
 		}
 		if status != nil {
@@ -290,7 +293,10 @@ func (a *app) printStatus(report *statusReport) {
 	fmt.Fprintln(table, "PLUGIN\tVERSION\tCONFIG\tSCRIPT\tSTATE\tRESTARTS")
 	for _, p := range report.Plugins {
 		config := "-"
-		if p.HasConfig {
+		switch {
+		case p.ConfigBroken:
+			config = "error"
+		case p.HasConfig:
 			config = "loaded"
 		}
 		if len(p.Scripts) == 0 {
