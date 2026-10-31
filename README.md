@@ -1,41 +1,68 @@
 <h1 align="center">rexd</h1>
 
-<h3 align="center">A plugin manager and process supervisor for Rex.</h3>
+<h3 align="center">Install plugins for Rex, and keep them running.</h3>
 
-[Rex](https://rex.superlogical.com) runs plugin code in two places. Config code defines actions and keys, and it has to be in Rex's `init.lua`. Event scripts react to things like a terminal bell, and they only receive events while a `rex do` process stays alive. Rex ships no installer for the first part, and nothing that keeps the second part running.
+<p align="center">
+  <img src=".github/assets/film-install.png" width="100%" alt="A terminal: rexd install adds the bell-notify plugin, and rexd status shows its event script running" />
+</p>
 
-rexd does both. It installs a plugin from GitHub, adds its config code to Rex, and keeps its event scripts running.
+rexd is a plugin manager and process supervisor for [Rex](https://www.superlogical.com/rex). It installs a plugin from GitHub, adds its config code to Rex, and keeps its event scripts running.
 
+Rex runs plugin code in two places. Config code defines actions and keys, and it has to be in Rex's `init.lua`. Event scripts react to things like a terminal bell, and they only receive events while a `rex do` process stays alive. Rex ships no installer for the first part, and nothing that keeps the second part running.
+
+## Install a plugin with one command
+
+A plugin can come from GitHub, any git URL, or a folder on your machine:
+
+```sh
+rexd install owner/repo                  # a GitHub repository
+rexd install owner/repo@v1.2.0           # at a branch, tag or commit
+rexd install https://gitlab.com/a/b.git  # any git URL
+rexd install ./my-plugin                 # a copy of a local folder
+rexd install ./my-plugin --link          # a link to it, for development
 ```
-$ rexd install tornikegomareli/some-plugin
-Cloning https://github.com/tornikegomareli/some-plugin.git
-Checking the plugin's config
-Installed tornikegomareli.some-plugin 0.1.0
 
-$ rexd status
-Daemon: running, pid 79409
-Rex:    running
+`rexd update` updates every plugin, and `rexd remove` takes one out. Rex reloads its config after each change, so you do not restart anything.
 
-PLUGIN            VERSION  CONFIG  SCRIPT  STATE                                   RESTARTS
-acme.crashy       0.0.1    -       boom    exited with status 1, restarting in 4s  3
-rexd.bell-notify  0.1.0    loaded  notify  running, pid 79542                      0
-```
+## Event scripts stay alive
+
+The daemon starts each event script and watches it. If a script dies, the daemon starts it again and waits longer after each crash. If you quit Rex, scripts wait until you open it again. rexd never starts Rex.
+
+`rexd status` shows what every script is doing, and `rexd logs` shows why one failed.
+
+<p align="center">
+  <img src=".github/assets/film-restart.png" width="100%" alt="rexd status shows a script that exited and restarts in 6 seconds, beside one that runs. rexd logs shows the error: the API key is not set" />
+</p>
+
+## A broken plugin cannot cost you your setup
+
+rexd edits your Rex config, so a mistake there must not cost you your setup.
+
+- **Rex checks every change.** rexd loads a plugin in Rex's own checker before keeping it. If the check fails, every step undoes itself and your config stays as it was.
+- **An update never replaces a working version with a broken one.** The new version is built beside the old one, and it only moves into place after it passes the check.
+- **One broken plugin stays contained.** If a plugin breaks later, its error stays with it, and your own keys and other plugins keep working. `rexd status` says what is wrong.
+- **Your keys win.** `require("rexd")` goes first in `init.lua`. In Rex the newest binding for a key wins, so anything you bind below it overrides a plugin.
+
+<p align="center">
+  <img src=".github/assets/film-check.png" width="100%" alt="rexd install refuses a plugin with a syntax error in its config code, and rexd list shows the other plugins are still installed" />
+</p>
+
+A plugin's build steps and scripts run as you, like any program you install. Install plugins you trust.
 
 ## Install
 
 ```sh
-git clone https://github.com/tornikegomareli/rexd.git
-cd rexd
-make install
+go install github.com/tornikegomareli/rexd/cmd/rexd@latest
+rexd setup
 ```
 
-This puts `rexd` in your Go bin folder, usually `~/go/bin`. If that folder is not on your `PATH`, choose another one:
+`rexd setup` connects rexd to Rex and starts the daemon. It is safe to run again, and it repairs whatever is missing.
+
+`go install` puts `rexd` in your Go bin folder, usually `~/go/bin`. If that folder is not on your `PATH`, choose another one:
 
 ```sh
-GOBIN="$HOME/.local/bin" make install
+GOBIN="$HOME/.local/bin" go install github.com/tornikegomareli/rexd/cmd/rexd@latest
 ```
-
-To update rexd itself, run `git pull`, then `make install` and `rexd setup`. `rexd setup` restarts the daemon with the new version.
 
 Requirements:
 
@@ -43,16 +70,25 @@ Requirements:
 - Go 1.24 or newer to build it, and git to install plugins from GitHub.
 - macOS, Linux or FreeBSD. On macOS, `rexd setup` makes the daemon start at login. On the others, see [Running without a LaunchAgent](#running-without-a-launchagent).
 
-## Quick start
+To update rexd itself, run the `go install` command again, then `rexd setup`. `rexd setup` restarts the daemon with the new version.
+
+To try it, install the example plugin:
 
 ```sh
-rexd setup                               # connect to Rex and start the daemon
-rexd install ./examples/bell-notify      # install the example plugin
+git clone https://github.com/tornikegomareli/rexd.git
+rexd install ./rexd/examples/bell-notify
 ```
 
-Ring a bell in any Rex terminal with `printf '\a'`, and a notification names the session.
+Ring a bell in any Rex terminal with `printf '\a'`, and a macOS notification names the session.
 
-`rexd setup` is safe to run again, and it repairs whatever is missing.
+## Remove
+
+```sh
+rexd teardown          # disconnect; plugins stay, and rexd setup brings them back
+rexd teardown --purge  # also delete plugins, state and logs
+```
+
+Both remove the line from `init.lua`, the generated files and the LaunchAgent.
 
 ## Commands
 
@@ -69,16 +105,6 @@ Ring a bell in any Rex terminal with `printf '\a'`, and a notification names the
 | `rexd daemon` | Runs the daemon in the foreground |
 
 `rexd help COMMAND` shows every flag. `list` and `status` take `--json`.
-
-`SOURCE` is one of these:
-
-```sh
-rexd install owner/repo                  # a GitHub repository
-rexd install owner/repo@v1.2.0           # at a branch, tag or commit
-rexd install https://gitlab.com/a/b.git  # any git URL
-rexd install ./my-plugin                 # a copy of a local folder
-rexd install ./my-plugin --link          # a link to it, for development
-```
 
 ## Writing a plugin
 
@@ -107,18 +133,6 @@ end)
 
 Develop it with `rexd install ./my-plugin --link`, and run `rexd update acme.bell-notify` to reload it. [`examples/bell-notify`](examples/bell-notify) is a working template, and the [plugin guide](docs/plugins.md) has the full reference.
 
-## How it stays safe
-
-rexd edits your Rex config, so a mistake there must not cost you your setup.
-
-- **Rex checks every change.** rexd loads a plugin in Rex's own checker before keeping it. If the check fails, every step undoes itself and your config stays as it was.
-- **An update never replaces a working version with a broken one.** The new version is built beside the old one, and it only moves into place after it passes the check.
-- **One broken plugin stays contained.** If a plugin breaks later, its error stays with it, and your own keys and other plugins keep working. `rexd status` says what is wrong.
-- **Your keys win.** `require("rexd")` goes first in `init.lua`. In Rex the newest binding for a key wins, so anything you bind below it overrides a plugin.
-- **It never starts Rex.** Every `rex` command runs with `--autostart=false`. If you quit Rex, scripts wait until you open it again.
-
-A plugin's build steps and scripts run as you, like any program you install. Install plugins you trust.
-
 ## What it does to your machine
 
 | Path | What it is |
@@ -131,15 +145,6 @@ A plugin's build steps and scripts run as you, like any program you install. Ins
 | `~/Library/LaunchAgents/io.github.tornikegomareli.rexd.plist` | Starts the daemon at login |
 
 The two `.local` folders follow `XDG_DATA_HOME` and `XDG_STATE_HOME`.
-
-## Remove
-
-```sh
-rexd teardown          # disconnect; plugins stay, and rexd setup brings them back
-rexd teardown --purge  # also delete plugins, state and logs
-```
-
-Both remove the line from `init.lua`, the generated files and the LaunchAgent.
 
 ## Running without a LaunchAgent
 
@@ -172,6 +177,7 @@ The [architecture notes](docs/architecture.md) explain the design, and the Rex b
 ## Development
 
 ```sh
+make install   # build this checkout and put it in your Go bin folder
 make test      # unit tests, with the race detector
 make e2e       # end-to-end tests against a real Rex
 make e2e-race  # the same, with a race-enabled rexd
