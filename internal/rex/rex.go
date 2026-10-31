@@ -14,19 +14,8 @@ import (
 	"strings"
 )
 
-const (
-	// exitNoTarget is the status rex exits with when it cannot pick a session.
-	exitNoTarget = 3
-	// exitServerUnavailable is the status rex exits with when it cannot reach
-	// the server, or when the server goes away while a script runs.
-	exitServerUnavailable = 4
-)
-
-// IsAvailabilityExit reports whether an exit status means Rex or a session was
-// missing. That says nothing about the script, so it does not count as a failure.
-func IsAvailabilityExit(code int) bool {
-	return code == exitNoTarget || code == exitServerUnavailable
-}
+// exitServerUnavailable is the status rex exits with when it cannot reach the server.
+const exitServerUnavailable = 4
 
 // ErrNotRunning means the Rex server is not running.
 var ErrNotRunning = errors.New("Rex is not running")

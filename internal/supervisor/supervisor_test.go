@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -349,6 +350,31 @@ func TestRepeatedExitsBecomeCrashing(t *testing.T) {
 	// It keeps trying.
 	seen := len(h.fake.Starts())
 	h.eventually("another attempt", func() bool { return len(h.fake.Starts()) > seen })
+}
+
+// A script can exit with the statuses rex uses for "server gone" while Rex is fine.
+// Rex's answer decides, or this would restart as fast as processes can start.
+func TestExitStatusesOfRexDoNotSkipTheDelay(t *testing.T) {
+	for _, code := range []int{3, 4} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			h := newHarness(t)
+			h.setSpecs(h.script("looper", "exit "+strconv.Itoa(code)+"\n"))
+			timing := fastTiming()
+			timing.BackoffMin = 200 * time.Millisecond
+			timing.BackoffMax = time.Hour
+			h.run(timing)
+
+			h.eventually("a recorded failure", func() bool {
+				s, ok := h.scriptStatus("looper")
+				return ok && s.LastExit != nil && s.LastExit.Code == code
+			})
+			time.Sleep(time.Second)
+			// Delays of 200ms, 400ms and 800ms leave room for about 3 starts.
+			if starts := len(h.fake.Starts()); starts > 5 {
+				t.Fatalf("started %d times in about a second", starts)
+			}
+		})
+	}
 }
 
 func TestScriptExitingCleanlyIsRestartedToo(t *testing.T) {

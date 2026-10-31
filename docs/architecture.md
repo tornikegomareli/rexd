@@ -63,9 +63,10 @@ A script is in one of these states:
              Rex and a session are there
   waiting ─────────────────────────────────▶ running
      ▲ ▲                                       │
-     │ │       exit 3 or 4, or Rex is gone     │
+     │ │       exit, and Rex or its last       │
+     │ │       session is gone                 │
      │ └───────────────────────────────────────┤
-     │                                         │ any other exit, with Rex still there
+     │                                         │ exit, with Rex still there
      │  delay is over                          ▼
      └─────────────────────────────  backoff, or crashing
 ```
@@ -75,7 +76,7 @@ Waiting does not count as failing. To tell the two apart, the supervisor asks Re
 - While scripts wait, it asks after 2 seconds, then less and less often, up to every 15 seconds. Rex can stay closed for hours, and each question starts a process. So a script starts at most 15 seconds after Rex is back.
 - When a script exits, it asks once. If Rex is there, the script failed. If not, the script only went down with Rex.
 
-Exit statuses 3 and 4 mean Rex or a session was missing, so they never count as failures. Asking Rex covers any other way a script can go down with it, and it keeps working if Rex changes its exit statuses.
+The exit status plays no part in this. A script can exit with the status rex uses for "server gone" while Rex is fine, and it would then restart as fast as processes can start. Asking Rex also keeps working if Rex changes its exit statuses.
 
 The delay starts at 1 second and doubles up to 1 minute. It starts over once a script has run for a minute. Five failures within 2 minutes mark a script as crashing, and it then retries at the longest delay.
 

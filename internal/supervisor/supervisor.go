@@ -498,13 +498,14 @@ func (s *Supervisor) handleExit(key string, run, code int, waitErr error, ended 
 		return
 	}
 
-	if !rex.IsAvailabilityExit(code) {
-		u.exitToJudge = true
-		u.lastExit = &state.Exit{Code: code, At: ended, Ran: u.lastRan.Round(time.Millisecond).String()}
-		var exit *exec.ExitError
-		if waitErr != nil && !errors.As(waitErr, &exit) {
-			u.lastExit.Error = waitErr.Error()
-		}
+	// Rex's answer decides whether this was a failure. An exit status cannot:
+	// a script may exit with the status rex uses for "server gone", and rex can
+	// change its statuses.
+	u.exitToJudge = true
+	u.lastExit = &state.Exit{Code: code, At: ended, Ran: u.lastRan.Round(time.Millisecond).String()}
+	var exit *exec.ExitError
+	if waitErr != nil && !errors.As(waitErr, &exit) {
+		u.lastExit.Error = waitErr.Error()
 	}
 	s.setState(u, state.ScriptWaiting)
 	s.requestProbe()
