@@ -691,11 +691,15 @@ func TestUpdateRemovingConfigCodeRemovesTheModule(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(src, "rex-plugin.toml"), "id = \"acme.foo\"\nname = \"T\"\nversion = \"2\"\n[[scripts]]\nname = \"s\"\npath = \"s.lua\"\n")
+	before := e.fake.Reloads()
 	if _, err := e.m.Update(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
 	missing(t, e.layout.Module("acme.foo"))
 	if strings.Contains(read(t, e.layout.Index()), "acme.foo") {
 		t.Error("still in the index")
+	}
+	if e.fake.Reloads() != before+1 {
+		t.Error("Rex must reload, or the old action stays live")
 	}
 }

@@ -441,11 +441,10 @@ func (m *Manager) Update(ctx context.Context, ids []string) ([]UpdateResult, err
 	}
 
 	var (
-		results     []UpdateResult
-		failures    []error
-		anyChanged  bool
-		needsReload bool
-		hasScripts  bool
+		results    []UpdateResult
+		failures   []error
+		anyChanged bool
+		hasScripts bool
 	)
 	for _, p := range targets {
 		result, man, err := m.updateOne(ctx, client, current, layout, p)
@@ -456,14 +455,12 @@ func (m *Manager) Update(ctx context.Context, ids []string) ([]UpdateResult, err
 		results = append(results, result)
 		if result.Changed {
 			anyChanged = true
-			needsReload = needsReload || man.Config != ""
 			hasScripts = hasScripts || len(man.Scripts) > 0
 		}
 	}
-	if needsReload {
-		m.reload(ctx, client)
-	}
 	if anyChanged {
+		// Even without config code now, the old version's may still be loaded.
+		m.reload(ctx, client)
 		m.notifyDaemon(hasScripts)
 	}
 	return results, errors.Join(failures...)
