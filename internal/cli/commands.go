@@ -363,7 +363,11 @@ func (a *app) gatherStatus(ctx context.Context) (*statusReport, error) {
 		}
 	}
 	if status != nil {
-		report.Rex = status.Daemon.Rex
+		// Only a script makes the daemon watch Rex. Without one, its answer is
+		// old or missing.
+		if len(status.Scripts) > 0 {
+			report.Rex = status.Daemon.Rex
+		}
 		report.Daemon.Problem = status.Daemon.Problem
 	}
 
@@ -399,7 +403,9 @@ func (a *app) gatherStatus(ctx context.Context) (*statusReport, error) {
 func (a *app) printStatus(report *statusReport) {
 	if report.Daemon.Running {
 		fmt.Fprintf(a.stdout, "Daemon: running, pid %d\n", report.Daemon.PID)
-		fmt.Fprintf(a.stdout, "Rex:    %s\n", describeRex(report.Rex))
+		if report.Rex != "" {
+			fmt.Fprintf(a.stdout, "Rex:    %s\n", describeRex(report.Rex))
+		}
 		if report.Daemon.Problem != "" {
 			fmt.Fprintf(a.stdout, "Problem: %s\n", report.Daemon.Problem)
 		}
@@ -445,7 +451,7 @@ func describeRex(rexState state.RexState) string {
 	case state.RexDown:
 		return "not running"
 	}
-	return "not checked yet"
+	return string(rexState)
 }
 
 func describeScript(s state.ScriptStatus, rexState state.RexState) string {

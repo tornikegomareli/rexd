@@ -500,6 +500,29 @@ func TestInstallRunAndRemove(t *testing.T) {
 	}
 }
 
+func TestStatusNamesRexOnlyWhileAScriptWatchesIt(t *testing.T) {
+	r := newRig(t)
+	r.setup()
+	r.newSession("first")
+	r.startDaemon()
+
+	if out := r.mustRexd("status"); strings.Contains(out, "Rex:") {
+		t.Errorf("no script watches Rex, so the daemon cannot know:\n%s", out)
+	}
+
+	r.mustRexd("install", r.plugin(probeID, "e2e_probe", "1.0"), "--link")
+	r.waitRunning(probeID, 0)
+	if out := r.mustRexd("status"); !strings.Contains(out, "Rex:    running") {
+		t.Errorf("status:\n%s", out)
+	}
+
+	// The daemon's last answer is old once nothing watches Rex.
+	r.mustRexd("remove", probeID)
+	r.eventually("status to stop naming Rex", func() bool {
+		return !strings.Contains(r.mustRexd("status"), "Rex:")
+	})
+}
+
 func TestCopyInstallAndPlainGitInstall(t *testing.T) {
 	r := newRig(t)
 	r.setup()
