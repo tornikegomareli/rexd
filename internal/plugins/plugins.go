@@ -137,7 +137,9 @@ func checkAPI(ctx context.Context, client rex.Client, man *manifest.Manifest) er
 	return nil
 }
 
-// build runs a plugin's build steps in dir. No shell reads the commands.
+// build runs a plugin's build steps in dir, which may be a temporary copy. The
+// plugin's folder is where it ends up, for a build that embeds that path. No shell
+// reads the commands.
 func (m *Manager) build(ctx context.Context, man *manifest.Manifest, dir string) error {
 	for _, step := range man.Build {
 		m.printf("Building: %s", strings.Join(step.Run, " "))
@@ -146,7 +148,7 @@ func (m *Manager) build(ctx context.Context, man *manifest.Manifest, dir string)
 		cmd.Env = append(os.Environ(),
 			"REXD_PLUGIN_ID="+man.ID,
 			"REXD_PLUGIN_VERSION="+man.Version,
-			"REXD_PLUGIN_DIR="+dir,
+			"REXD_PLUGIN_DIR="+m.Dirs.Plugin(man.ID),
 		)
 		cmd.Stdout, cmd.Stderr = m.Out, m.Out
 		if err := cmd.Run(); err != nil {

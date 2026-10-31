@@ -273,6 +273,31 @@ run = ["sh", "-c", "echo $REXD_PLUGIN_ID-$REXD_PLUGIN_VERSION > built.txt"]
 	}
 }
 
+// A build may embed this path, so it must be where the plugin ends up. The folder
+// it builds in is temporary.
+func TestBuildStepsSeeTheFinalPluginFolder(t *testing.T) {
+	e := newEnv(t)
+	src := pluginFiles(t, "acme.foo", "1.0", configManifest+`
+[[build]]
+run = ["sh", "-c", "echo $REXD_PLUGIN_DIR > dir.txt"]
+`, map[string]string{"rex/config.lua": "-- x"})
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: src}); err != nil {
+		t.Fatal(err)
+	}
+	want := e.dirs.Plugin("acme.foo") + "\n"
+	if got := read(t, filepath.Join(e.dirs.Plugin("acme.foo"), "dir.txt")); got != want {
+		t.Errorf("on install: REXD_PLUGIN_DIR = %q, want %q", got, want)
+	}
+
+	write(t, filepath.Join(src, "rex/config.lua"), "-- y")
+	if _, err := e.m.Update(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(e.dirs.Plugin("acme.foo"), "dir.txt")); got != want {
+		t.Errorf("on update: REXD_PLUGIN_DIR = %q, want %q", got, want)
+	}
+}
+
 func TestInstallFailedBuildChangesNothing(t *testing.T) {
 	e := newEnv(t)
 	src := pluginFiles(t, "acme.foo", "1.0", configManifest+`

@@ -133,7 +133,7 @@ The daemon's `PATH` comes from the shell that ran `rexd setup`, because launchd 
 
 ## Build steps
 
-Build steps run in order in the plugin's folder on install and update, with the first three variables above set. If one fails, nothing changes. Each command runs directly, so to use shell syntax, run `sh -c`:
+Build steps run in order on install and update, with the first three variables above set. If one fails, nothing changes. Each command runs directly, so to use shell syntax, run `sh -c`:
 
 ```toml
 [[build]]
@@ -141,6 +141,8 @@ run = ["sh", "-c", "npm ci && npm run build"]
 ```
 
 `rexd install` prints each command before it runs it.
+
+A step runs in a temporary copy of the plugin, which moves into place afterwards. So write files with relative paths. `REXD_PLUGIN_DIR` is where the plugin ends up, for a build that has to embed that path. That folder may not exist yet, or may still hold the old version, so do not write to it.
 
 ## Developing a plugin
 
