@@ -30,8 +30,8 @@ const (
 	pollInterval   = 100 * time.Millisecond
 )
 
-// ErrUnsupported means this system has no service support in rexd.
-var ErrUnsupported = errors.New("rexd can only install a LaunchAgent on macOS")
+// Supported reports whether this system has LaunchAgents.
+func Supported() bool { return runtime.GOOS == "darwin" }
 
 // Spec describes the LaunchAgent.
 type Spec struct {
@@ -105,9 +105,6 @@ func writeString(b *bytes.Buffer, indent, value string) {
 
 // Install writes the LaunchAgent and starts it, replacing any earlier one.
 func Install(ctx context.Context, spec Spec) error {
-	if runtime.GOOS != "darwin" {
-		return ErrUnsupported
-	}
 	path, err := PlistPath(spec.Label)
 	if err != nil {
 		return err
@@ -129,9 +126,6 @@ func Install(ctx context.Context, spec Spec) error {
 // Uninstall stops the LaunchAgent and deletes its file. An agent that does not
 // exist is not an error.
 func Uninstall(ctx context.Context, label string) error {
-	if runtime.GOOS != "darwin" {
-		return nil
-	}
 	if err := Stop(ctx, label); err != nil {
 		return err
 	}

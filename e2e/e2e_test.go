@@ -21,7 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tornikegomareli/rexd/internal/cli"
+	"github.com/tornikegomareli/rexd/internal/installation"
+	"github.com/tornikegomareli/rexd/internal/paths"
 	"github.com/tornikegomareli/rexd/internal/rex"
 	"github.com/tornikegomareli/rexd/internal/service"
 	"github.com/tornikegomareli/rexd/internal/state"
@@ -266,25 +267,6 @@ func (r *rig) mustRexd(args ...string) string {
 func (r *rig) setup() {
 	r.t.Helper()
 	r.mustRexd("setup", "--server", r.server, "--rex-config", r.init, "--no-service")
-}
-
-// cliInProcess runs the command line inside the test, with a LaunchAgent label of
-// its own. Commands that touch the LaunchAgent must run this way: the rexd binary
-// would use the normal label, and so a real installation.
-func (r *rig) cliInProcess(label string, args ...string) string {
-	r.t.Helper()
-	for _, kv := range r.env {
-		name, value, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "XDG_") || strings.HasPrefix(name, "REXD_") {
-			r.t.Setenv(name, value)
-		}
-	}
-	var out bytes.Buffer
-	code := cli.Main(args, cli.Options{Stdout: &out, Stderr: &out, ServiceLabel: label, Executable: rexdBinary})
-	if code != 0 {
-		r.t.Fatalf("rexd %v: exit %d\n%s", args, code, out.String())
-	}
-	return out.String()
 }
 
 func (r *rig) startDaemon() {
@@ -852,7 +834,7 @@ func TestTeardownAndSetupAgain(t *testing.T) {
 	r.mustRexd("install", r.plugin(probeID, "e2e_probe", "1.0"))
 	script := r.waitRunning(probeID, 0)
 
-	r.cliInProcess(service.Label+".e2e-none", "teardown")
+	r.mustRexd("teardown")
 	r.daemonCmd.Wait()
 	r.daemonCmd = nil
 	if alive(script.PID) {
@@ -888,20 +870,32 @@ func TestPluginInAPathWithSpaces(t *testing.T) {
 	r.waitMarker("started " + probeID + " 1.0")
 }
 
-// The whole path through the command line with a real LaunchAgent: setup installs
-// it, launchd starts the daemon, teardown removes it. It runs the command line
-// in-process, to give it a label of its own, so a real installation stays untouched.
+// The whole path through the real binary with a real LaunchAgent: setup installs it,
+// launchd starts the daemon, teardown removes it. The rig's folders make another
+// installation, so the agent of the normal one must stay exactly as it was.
 func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("LaunchAgents only exist on macOS")
 	}
 	r := newRig(t)
 	r.newSession("first")
-	label := fmt.Sprintf("%s.e2e-cli.%d", service.Label, os.Getpid())
-	run := func(args ...string) string {
-		t.Helper()
-		return r.cliInProcess(label, args...)
+	label, err := installation.Label(paths.Dirs{
+		Data:  filepath.Join(r.root, "data", "rexd"),
+		State: filepath.Join(r.root, "state", "rexd"),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+	if label == service.Label {
+		t.Fatal("the test would use the normal LaunchAgent")
+	}
+	normalBefore := normalAgent(t)
+	t.Cleanup(func() {
+		if got := normalAgent(t); got != normalBefore {
+			t.Errorf("the normal LaunchAgent changed: was %q, is %q", normalBefore, got)
+		}
+	})
+	run := r.mustRexd
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
@@ -922,7 +916,11 @@ func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(plist), rexdBinary) {
+	binary, err := filepath.EvalSymlinks(rexdBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plist), binary) {
 		t.Errorf("the plist does not run rexd:\n%s", plist)
 	}
 
@@ -959,6 +957,20 @@ func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
 	if got, _ := os.ReadFile(r.init); strings.Contains(string(got), "rexd") {
 		t.Errorf("init.lua still loads rexd: %q", got)
 	}
+}
+
+// normalAgent describes the LaunchAgent of the normal installation, if there is one.
+func normalAgent(t *testing.T) string {
+	t.Helper()
+	path, err := service.PlistPath(service.Label)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := "no file"
+	if info, err := os.Stat(path); err == nil {
+		file = info.ModTime().String()
+	}
+	return fmt.Sprintf("file %s, loaded %v", file, service.Loaded(context.Background(), service.Label))
 }
 
 // fakeOsascript puts a program named osascript first on the PATH. It writes its

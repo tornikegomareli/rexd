@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/tornikegomareli/rexd/internal/paths"
+	"github.com/tornikegomareli/rexd/internal/service"
 	"github.com/tornikegomareli/rexd/internal/state"
+	"github.com/tornikegomareli/rexd/internal/testutil/fakelaunchctl"
 	"github.com/tornikegomareli/rexd/internal/testutil/fakerex"
 )
 
@@ -22,32 +24,34 @@ func TestMain(m *testing.M) {
 }
 
 type cliEnv struct {
-	t    *testing.T
-	fake *fakerex.Fake
-	dirs paths.Dirs
-	init string
+	t         *testing.T
+	fake      *fakerex.Fake
+	launchctl *fakelaunchctl.Fake
+	dirs      paths.Dirs
+	init      string
 }
 
-// newCLI points every path rexd uses at a temporary folder and at a fake rex.
+// newCLI points every path rexd uses at a temporary folder, at a fake rex and at a
+// fake launchctl.
 func newCLI(t *testing.T) *cliEnv {
 	t.Helper()
 	root := t.TempDir()
 	fake := fakerex.New(t)
 	t.Setenv("REXD_REX", fake.Path)
+	t.Setenv("HOME", root)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(root, "data"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
 	dirs, err := paths.Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &cliEnv{t: t, fake: fake, dirs: dirs, init: filepath.Join(root, "config", "rex", "init.lua")}
+	return &cliEnv{t: t, fake: fake, launchctl: fakelaunchctl.New(t), dirs: dirs, init: filepath.Join(root, "config", "rex", "init.lua")}
 }
 
-// run calls the command line with a LaunchAgent label that cannot exist.
 func (e *cliEnv) run(args ...string) (int, string, string) {
 	e.t.Helper()
 	var out, errOut bytes.Buffer
-	code := Main(args, Options{Version: "test", Stdout: &out, Stderr: &errOut, ServiceLabel: "io.github.tornikegomareli.rexd.test.none"})
+	code := Main(args, Options{Version: "test", Stdout: &out, Stderr: &errOut})
 	return code, out.String(), errOut.String()
 }
 
@@ -248,17 +252,6 @@ func TestStatusReportsAPluginThatBrokeLater(t *testing.T) {
 	}
 }
 
-func TestWithoutVersionedRex(t *testing.T) {
-	rexTerminal := "/Users/me/Library/Application Support/com.superlogical.rex/RexServer/Versions/1642/Rex Server.app/Contents/MacOS"
-	got := withoutVersionedRex("/opt/homebrew/bin:" + rexTerminal + ":/usr/bin")
-	if got != "/opt/homebrew/bin:/usr/bin" {
-		t.Fatalf("got %q", got)
-	}
-	if got := withoutVersionedRex("/usr/bin:/bin"); got != "/usr/bin:/bin" {
-		t.Fatalf("got %q", got)
-	}
-}
-
 func TestDescribeScript(t *testing.T) {
 	next := time.Now().Add(4 * time.Second)
 	tests := []struct {
@@ -417,6 +410,55 @@ func appendTo(t *testing.T, path, content string) {
 	}
 	defer f.Close()
 	f.WriteString(content)
+}
+
+// Folders that are not the default make another installation, so the normal agent
+// belongs to someone else, and teardown must not touch it.
+func TestTeardownLeavesTheAgentOfOtherFolders(t *testing.T) {
+	if !service.Supported() {
+		t.Skip("LaunchAgents only exist on macOS")
+	}
+	e := newCLI(t)
+	e.setup()
+	e.launchctl.Load(t, service.Label)
+	plist, err := service.PlistPath(service.Label)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plist, []byte("someone else's"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	if code := Main([]string{"teardown"}, Options{Stdout: &out, Stderr: &errOut}); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if !e.launchctl.Loaded(service.Label) {
+		t.Errorf("the normal agent was unloaded: %q", e.launchctl.Calls(t))
+	}
+	if _, err := os.Stat(plist); err != nil {
+		t.Errorf("the normal agent's file is gone: %v", err)
+	}
+}
+
+// Removing Rex first must not stop rexd being removed.
+func TestTeardownWithoutRex(t *testing.T) {
+	e := newCLI(t)
+	e.setup()
+	e.mustRun("install", samplePlugin(t, "acme.sample", "1.0"))
+	t.Setenv("REXD_REX", "")
+	t.Setenv("PATH", e.launchctl.Dir)
+
+	out := e.mustRun("teardown")
+	if !strings.Contains(out, "Rex is not installed") {
+		t.Errorf("output:\n%s", out)
+	}
+	if data, err := os.ReadFile(e.init); err == nil && strings.Contains(string(data), "rexd") {
+		t.Errorf("init.lua still loads rexd: %q", data)
+	}
 }
 
 func TestTeardown(t *testing.T) {

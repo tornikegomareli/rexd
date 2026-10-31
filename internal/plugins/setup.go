@@ -151,7 +151,9 @@ func (m *Manager) Teardown(ctx context.Context, opts TeardownOptions) error {
 		if err := layout.RemoveAll(); err != nil {
 			return err
 		}
-		m.reload(ctx, m.client(current))
+		if m.Rex.Path != "" { // Empty when Rex was removed before rexd.
+			m.reload(ctx, m.client(current))
+		}
 	}
 	if opts.Purge {
 		if err := os.RemoveAll(m.Dirs.Data); err != nil {

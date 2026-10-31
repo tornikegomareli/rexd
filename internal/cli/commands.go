@@ -3,42 +3,27 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"slices"
-	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/tornikegomareli/rexd/internal/daemon"
+	"github.com/tornikegomareli/rexd/internal/installation"
 	"github.com/tornikegomareli/rexd/internal/paths"
 	"github.com/tornikegomareli/rexd/internal/plugins"
 	"github.com/tornikegomareli/rexd/internal/rex"
 	"github.com/tornikegomareli/rexd/internal/rexconfig"
-	"github.com/tornikegomareli/rexd/internal/service"
 	"github.com/tornikegomareli/rexd/internal/state"
-)
-
-const (
-	// daemonStartWait is how long setup waits to see the daemon running.
-	daemonStartWait = 5 * time.Second
-	// daemonStopWait covers the daemon stopping every script.
-	daemonStopWait = 20 * time.Second
 )
 
 // manager builds the plugin manager from the environment.
 func (a *app) manager() (*plugins.Manager, error) {
-	dirs, err := paths.Default()
+	inst, err := installation.Open(a.stdout)
 	if err != nil {
 		return nil, err
 	}
-	path, err := rex.Find()
-	if err != nil {
-		return nil, err
-	}
-	return &plugins.Manager{Dirs: dirs, Rex: rex.Client{Path: path}, Out: a.stdout}, nil
+	return inst.Manager()
 }
 
 func runSetup(ctx context.Context, a *app, args []string) error {
@@ -52,107 +37,14 @@ func runSetup(ctx context.Context, a *app, args []string) error {
 	if fs.NArg() > 0 {
 		return usagef("takes no arguments")
 	}
-
-	m, err := a.manager()
+	inst, err := installation.Open(a.stdout)
 	if err != nil {
 		return err
 	}
-	settings, err := m.Setup(ctx, plugins.SetupOptions{RexConfig: *rexConfig, Server: *server})
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(a.stdout, "Connected to %s\n", settings.RexConfig)
-
-	if *noService {
-		return a.reportDaemonWithoutService(m.Dirs)
-	}
-	spec, err := a.serviceSpec(m.Dirs)
-	if err != nil {
-		return err
-	}
-	err = service.Install(ctx, spec)
-	if errors.Is(err, service.ErrUnsupported) {
-		fmt.Fprintf(a.stdout, "This system has no LaunchAgent. Run \"rexd daemon\" under your init system to keep event scripts running.\n")
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("starting the daemon: %w", err)
-	}
-	if !waitForDaemon(ctx, m.Dirs) {
-		return fmt.Errorf("the LaunchAgent is installed, but the daemon did not start; see %s", spec.LogPath)
-	}
-	fmt.Fprintf(a.stdout, "The daemon is running and starts at login.\n")
-	return nil
-}
-
-func (a *app) reportDaemonWithoutService(dirs paths.Dirs) error {
-	notified, err := daemon.Notify(dirs)
-	if err != nil {
-		return err
-	}
-	if notified {
-		fmt.Fprintf(a.stdout, "The daemon is running.\n")
-		return nil
-	}
-	fmt.Fprintf(a.stdout, "Run \"rexd daemon\" to keep event scripts running.\n")
-	return nil
-}
-
-// serviceSpec describes the LaunchAgent. launchd starts programs with almost no
-// environment, so it keeps the PATH of this shell for plugins to find their tools.
-func (a *app) serviceSpec(dirs paths.Dirs) (service.Spec, error) {
-	exe := a.executable
-	if exe == "" {
-		var err error
-		exe, err = os.Executable()
-		if err != nil {
-			return service.Spec{}, err
-		}
-		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-			exe = resolved
-		}
-	}
-	env := map[string]string{}
-	for _, name := range []string{"PATH", "REXD_REX", "XDG_DATA_HOME", "XDG_STATE_HOME"} {
-		if value := os.Getenv(name); value != "" {
-			env[name] = value
-		}
-	}
-	if path, ok := env["PATH"]; ok {
-		env["PATH"] = withoutVersionedRex(path)
-	}
-	return service.Spec{
-		Label:   a.serviceLabel,
-		Program: []string{exe, "daemon"},
-		Env:     env,
-		LogPath: filepath.Join(dirs.Logs(), "launchd.log"),
-	}, nil
-}
-
-// withoutVersionedRex drops the folder a Rex terminal adds to PATH. It names one
-// version of Rex, which a later update replaces. Without it, rex.Find uses the
-// path that always points at the current version.
-func withoutVersionedRex(path string) string {
-	folders := filepath.SplitList(path)
-	folders = slices.DeleteFunc(folders, func(folder string) bool {
-		return strings.Contains(folder, "RexServer/Versions/")
+	return inst.Setup(ctx, installation.SetupOptions{
+		SetupOptions: plugins.SetupOptions{RexConfig: *rexConfig, Server: *server},
+		NoService:    *noService,
 	})
-	return strings.Join(folders, string(os.PathListSeparator))
-}
-
-func waitForDaemon(ctx context.Context, dirs paths.Dirs) bool {
-	deadline := time.Now().Add(daemonStartWait)
-	for time.Now().Before(deadline) {
-		if _, running, err := daemon.Running(dirs); err == nil && running {
-			return true
-		}
-		select {
-		case <-ctx.Done():
-			return false
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
-	return false
 }
 
 func runTeardown(ctx context.Context, a *app, args []string) error {
@@ -164,26 +56,11 @@ func runTeardown(ctx context.Context, a *app, args []string) error {
 	if fs.NArg() > 0 {
 		return usagef("takes no arguments")
 	}
-	m, err := a.manager()
+	inst, err := installation.Open(a.stdout)
 	if err != nil {
 		return err
 	}
-	// The LaunchAgent goes first. It would start a stopped daemon again.
-	if err := service.Uninstall(ctx, a.serviceLabel); err != nil {
-		return err
-	}
-	if _, err := daemon.Stop(ctx, m.Dirs, daemonStopWait); err != nil {
-		return err
-	}
-	if err := m.Teardown(ctx, plugins.TeardownOptions{Purge: *purge}); err != nil {
-		return err
-	}
-	if *purge {
-		fmt.Fprintf(a.stdout, "rexd is disconnected from Rex, and its plugins and state are deleted.\n")
-		return nil
-	}
-	fmt.Fprintf(a.stdout, "rexd is disconnected from Rex. Plugins stay in %s, and \"rexd setup\" brings them back.\n", m.Dirs.Plugins())
-	return nil
+	return inst.Teardown(ctx, *purge)
 }
 
 func runInstall(ctx context.Context, a *app, args []string) error {

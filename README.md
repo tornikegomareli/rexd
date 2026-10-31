@@ -88,7 +88,7 @@ rexd teardown          # disconnect; plugins stay, and rexd setup brings them ba
 rexd teardown --purge  # also delete plugins, state and logs
 ```
 
-Both remove the line from `init.lua`, the generated files and the LaunchAgent.
+Both remove the line from `init.lua`, the generated files and the LaunchAgent. Teardown still works if you removed Rex first.
 
 ## Commands
 
@@ -144,7 +144,7 @@ Develop it with `rexd install ./my-plugin --link`, and run `rexd update acme.bel
 | `~/.local/state/rexd/` | State, status and logs |
 | `~/Library/LaunchAgents/io.github.tornikegomareli.rexd.plist` | Starts the daemon at login |
 
-The two `.local` folders follow `XDG_DATA_HOME` and `XDG_STATE_HOME`.
+The two `.local` folders follow `XDG_DATA_HOME` and `XDG_STATE_HOME`. With other folders, rexd is a separate installation: its LaunchAgent's name ends with a hash of those folders, and it never touches the normal one.
 
 ## Running without a LaunchAgent
 

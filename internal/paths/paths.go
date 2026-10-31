@@ -22,16 +22,26 @@ func Default() (Dirs, error) {
 	if err != nil {
 		return Dirs{}, fmt.Errorf("finding the home folder: %w", err)
 	}
+	normal := Under(home)
 	return Dirs{
-		Data:  filepath.Join(xdg("XDG_DATA_HOME", filepath.Join(home, ".local", "share")), "rexd"),
-		State: filepath.Join(xdg("XDG_STATE_HOME", filepath.Join(home, ".local", "state")), "rexd"),
+		Data:  xdg("XDG_DATA_HOME", normal.Data),
+		State: xdg("XDG_STATE_HOME", normal.State),
 	}, nil
 }
 
-// xdg returns the folder in env, or fallback. The XDG spec says to ignore relative paths.
+// Under returns the folders of a home with no XDG variables set.
+func Under(home string) Dirs {
+	return Dirs{
+		Data:  filepath.Join(home, ".local", "share", "rexd"),
+		State: filepath.Join(home, ".local", "state", "rexd"),
+	}
+}
+
+// xdg returns rexd's folder under the one in env, or fallback. The XDG spec says to
+// ignore relative paths.
 func xdg(env, fallback string) string {
 	if v := os.Getenv(env); filepath.IsAbs(v) {
-		return v
+		return filepath.Join(v, "rexd")
 	}
 	return fallback
 }
