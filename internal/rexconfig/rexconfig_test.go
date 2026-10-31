@@ -315,6 +315,28 @@ func TestHasRequire(t *testing.T) {
 	}
 }
 
+func TestHasRequireIgnoresBlockComments(t *testing.T) {
+	for content, want := range map[string]bool{
+		"--[[\nrequire(\"rexd\")\n]]\n":                  false,
+		"--[==[\nrequire(\"rexd\")\n]==]\n":              false,
+		"--[==[\n]]\nrequire(\"rexd\")\n]==]\n":          false,
+		"--[[ unterminated\nrequire(\"rexd\")\n":         false,
+		"--[[ note ]]\nrequire(\"rexd\")\n":              true,
+		"--[[\nold\n]]\nrex.bind()\nrequire(\"rexd\")\n": true,
+		"-- [[ only a line comment\nrequire(\"rexd\")\n": true,
+	} {
+		l := layout(t)
+		writeInit(t, l, content)
+		got, err := l.HasRequire()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("HasRequire(%q) = %v, want %v", content, got, want)
+		}
+	}
+}
+
 func TestHasRequireWithoutAFile(t *testing.T) {
 	got, err := layout(t).HasRequire()
 	if err != nil || got {
@@ -492,6 +514,44 @@ func TestRemoveRequire(t *testing.T) {
 	want := "-- before\nrex.bind(\"cmd+d\", \"pane.zoom\")\n"
 	if got := readFile(t, l.Init); got != want {
 		t.Fatalf("init.lua = %q", got)
+	}
+}
+
+func TestRemoveRequireKeepsOtherCode(t *testing.T) {
+	for content, want := range map[string]string{
+		// The comment on rexd's own line goes with it.
+		"require(\"rexd\") -- note\nmine()\n": "mine()\n",
+		"require 'rexd'\nmine()\n":            "mine()\n",
+		"require(\"rexd\");\nmine()\n":        "mine()\n",
+		// Other code on the line stays, and so does its indentation.
+		"require(\"rexd\"); require(\"mine\")\n": "require(\"mine\")\n",
+		"  require(\"rexd\") mine()\nx()\n":      "  mine()\nx()\n",
+		// This uses the module's value, so removing the call would break the line.
+		"require(\"rexd\").x = 1\nmine()\n": "require(\"rexd\").x = 1\nmine()\n",
+		// A comment is not code.
+		"--[[\nrequire(\"rexd\")\n]]\nmine()\n":                    "--[[\nrequire(\"rexd\")\n]]\nmine()\n",
+		"--[[\nrequire(\"rexd\")\n]]\nrequire(\"rexd\")\nmine()\n": "--[[\nrequire(\"rexd\")\n]]\nmine()\n",
+	} {
+		l := layout(t)
+		writeInit(t, l, content)
+		if err := l.RemoveRequire(); err != nil {
+			t.Fatal(err)
+		}
+		if got := readFile(t, l.Init); got != want {
+			t.Errorf("RemoveRequire(%q) = %q, want %q", content, got, want)
+		}
+	}
+}
+
+func TestAddRequireWhenOnlyACommentHasIt(t *testing.T) {
+	l := layout(t)
+	content := "--[[\nrequire(\"rexd\")\n]]\n"
+	writeInit(t, l, content)
+	if _, err := l.AddRequire(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, l.Init); got != requireLine+content {
+		t.Errorf("init.lua = %q", got)
 	}
 }
 

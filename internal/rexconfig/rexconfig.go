@@ -30,8 +30,8 @@ const (
 )
 
 // A require of exactly "rexd" at the start of a line. Requires of other modules
-// and commented-out lines do not match.
-var requirePattern = regexp.MustCompile(`(?m)^[ \t]*require[ \t]*\(?[ \t]*["']rexd["'][ \t]*\)?[^\n]*(\n|$)`)
+// and lines that start with a comment do not match.
+var requireCall = regexp.MustCompile(`^[ \t]*require[ \t]*\(?[ \t]*["']rexd["'][ \t]*\)?`)
 
 // Layout locates rexd's files beside one init.lua.
 type Layout struct {
@@ -185,7 +185,89 @@ func (l Layout) HasRequire() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return requirePattern.Match(data), nil
+	return hasRequire(data), nil
+}
+
+func hasRequire(data []byte) bool {
+	comments := blockComments(data)
+	offset := 0
+	for line := range bytes.Lines(data) {
+		if !inComment(comments, offset) && requireCall.Match(line) {
+			return true
+		}
+		offset += len(line)
+	}
+	return false
+}
+
+// withoutRequire removes the require of rexd and keeps everything else. If other
+// code shares the line, that code stays. A line that uses the module's value, such
+// as require("rexd").x, stays whole, because there is no safe way to change it.
+func withoutRequire(data []byte) []byte {
+	comments := blockComments(data)
+	var out []byte
+	offset := 0
+	for line := range bytes.Lines(data) {
+		start := offset
+		offset += len(line)
+		call := requireCall.Find(line)
+		if call == nil || inComment(comments, start) {
+			out = append(out, line...)
+			continue
+		}
+		rest := bytes.TrimLeft(line[len(call):], " \t")
+		if len(rest) > 0 && bytes.ContainsRune([]byte(".:([{"), rune(rest[0])) {
+			out = append(out, line...)
+			continue
+		}
+		rest = bytes.TrimLeft(bytes.TrimPrefix(rest, []byte(";")), " \t")
+		if len(bytes.TrimSpace(rest)) == 0 || bytes.HasPrefix(rest, []byte("--")) {
+			continue // Nothing else is on the line. A comment goes with it.
+		}
+		indent := len(line) - len(bytes.TrimLeft(line, " \t"))
+		out = append(append(out, line[:indent]...), rest...)
+	}
+	return out
+}
+
+// blockComments returns where Lua block comments are, as start and end offsets.
+// It does not know about strings, so a string holding "--[[" reads as a comment.
+// The worst result is that setup adds a second require, which does no harm.
+func blockComments(data []byte) [][2]int {
+	var comments [][2]int
+	for offset := 0; ; {
+		found := bytes.Index(data[offset:], []byte("--["))
+		if found < 0 {
+			return comments
+		}
+		start := offset + found
+		open := start + len("--[")
+		level := 0
+		for open+level < len(data) && data[open+level] == '=' {
+			level++
+		}
+		if open+level >= len(data) || data[open+level] != '[' {
+			offset = open // A line comment that starts with [.
+			continue
+		}
+		body := open + level + 1
+		closing := []byte("]" + strings.Repeat("=", level) + "]")
+		length := bytes.Index(data[body:], closing)
+		if length < 0 {
+			return append(comments, [2]int{start, len(data)})
+		}
+		offset = body + length + len(closing)
+		comments = append(comments, [2]int{start, offset})
+	}
+}
+
+func inComment(comments [][2]int, offset int) bool {
+	for _, c := range comments {
+		if offset >= c[0] && offset < c[1] {
+			return true
+		}
+	}
+	return false
 }
 
 // AddRequire makes init.lua load rexd, creating the file if needed. The line goes
@@ -198,7 +280,7 @@ func (l Layout) AddRequire() (restore func() error, err error) {
 		return nil, err
 	}
 	restore = func() error { return l.restoreInit(original, existed) }
-	if requirePattern.Match(original) {
+	if hasRequire(original) {
 		return restore, nil
 	}
 	if err := l.writeInit(append([]byte(requireLine), original...)); err != nil {
@@ -217,10 +299,10 @@ func (l Layout) RemoveRequire() error {
 	if err != nil {
 		return err
 	}
-	if !requirePattern.Match(data) {
+	if !hasRequire(data) {
 		return nil
 	}
-	rest := requirePattern.ReplaceAll(data, nil)
+	rest := withoutRequire(data)
 	if info, err := os.Lstat(l.Init); len(bytes.TrimSpace(rest)) == 0 && err == nil && info.Mode()&os.ModeSymlink == 0 {
 		return os.Remove(l.Init)
 	}
