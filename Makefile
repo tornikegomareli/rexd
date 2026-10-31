@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build install test e2e e2e-race lint clean
+.PHONY: build install test e2e e2e-race lint dist clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/rexd ./cmd/rexd
@@ -24,5 +24,16 @@ lint:
 	@test -z "$$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
 	go vet ./...
 
+# Archives for a release, one for each system, and their checksums.
+dist:
+	rm -rf dist && mkdir dist
+	for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64; do \
+		os=$${target%/*}; arch=$${target#*/}; dir=dist/rexd_$${os}_$${arch}; \
+		mkdir $$dir && cp LICENSE README.md $$dir/ && \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o $$dir/rexd ./cmd/rexd && \
+		tar -czf $$dir.tar.gz -C $$dir rexd LICENSE README.md && rm -r $$dir || exit 1; \
+	done
+	cd dist && shasum -a 256 *.tar.gz > checksums.txt
+
 clean:
-	rm -rf bin
+	rm -rf bin dist
