@@ -14,8 +14,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	fakerex.Main()
-	os.Exit(m.Run())
+	os.Exit(fakerex.RunTests(m))
 }
 
 func client(f *fakerex.Fake) rex.Client {

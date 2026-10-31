@@ -1,9 +1,11 @@
-// Package fakerex lets a test binary stand in for the rex command. It copies the
-// behavior measured against a real Rex server: exit status 4 when the server is
-// gone, exit status 3 when no session can be picked, and exit status 1 for a
-// config with errors.
+// Package fakerex provides a small program that stands in for the rex command in
+// tests. It copies the behavior measured against a real Rex server: exit status 4
+// when the server is gone, exit status 3 when no session can be picked, and exit
+// status 1 for a config with errors.
 //
-// Call Main at the top of TestMain, then use New to get a fake for a test.
+// The program is built once per test binary and without the race detector. A
+// race-enabled binary takes about a second to start on macOS, and tests run the
+// fake often. Use RunTests in TestMain and New in each test.
 package fakerex
 
 import (
@@ -12,6 +14,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -22,9 +25,10 @@ import (
 	"time"
 )
 
-const (
-	envDir = "REXD_FAKEREX_DIR"
+// EnvDir names the variable that holds a fake's control folder.
+const EnvDir = "REXD_FAKEREX_DIR"
 
+const (
 	fileDown       = "down"
 	fileSessions   = "sessions"
 	fileAPI        = "api"
@@ -37,14 +41,35 @@ const (
 	exitUnavailable  = 4
 )
 
-// Main turns this process into the fake rex if the test asked for it. It only
-// returns when the process is the normal test binary.
-func Main() {
-	dir := os.Getenv(envDir)
-	if dir == "" {
-		return
+var (
+	buildOnce sync.Once
+	binaryDir string
+	binary    string
+	buildErr  error
+)
+
+// RunTests runs a package's tests and removes the fake program afterwards.
+func RunTests(m *testing.M) int {
+	code := m.Run()
+	if binaryDir != "" {
+		os.RemoveAll(binaryDir)
 	}
-	os.Exit(run(dir, os.Args[1:]))
+	return code
+}
+
+func build() (string, error) {
+	buildOnce.Do(func() {
+		binaryDir, buildErr = os.MkdirTemp("", "fakerex")
+		if buildErr != nil {
+			return
+		}
+		binary = filepath.Join(binaryDir, "rex")
+		cmd := exec.Command("go", "build", "-o", binary, "github.com/tornikegomareli/rexd/internal/testutil/fakerex/cmd/fakerex")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			buildErr = fmt.Errorf("building the fake rex: %w\n%s", err, out)
+		}
+	})
+	return binary, buildErr
 }
 
 // Fake is a controllable rex command for one test.
@@ -70,8 +95,12 @@ type Start struct {
 // New returns a fake with the server up and one session.
 func New(t testing.TB) *Fake {
 	t.Helper()
+	path, err := build()
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
-	f := &Fake{Path: os.Args[0], Env: []string{envDir + "=" + dir}, dir: dir}
+	f := &Fake{Path: path, Env: []string{EnvDir + "=" + dir}, dir: dir}
 	f.SetSessions("session:one")
 	return f
 }
@@ -157,8 +186,8 @@ func appendJSONLine(path string, v any) {
 	file.Write(append(data, '\n'))
 }
 
-// run is the fake rex's main function.
-func run(dir string, args []string) int {
+// Run is the fake program's main function. It returns the exit status.
+func Run(dir string, args []string) int {
 	appendJSONLine(filepath.Join(dir, fileCalls), args)
 	args = skipGlobalFlags(args)
 	if len(args) == 0 {

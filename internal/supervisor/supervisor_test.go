@@ -19,8 +19,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	fakerex.Main()
-	os.Exit(m.Run())
+	os.Exit(fakerex.RunTests(m))
 }
 
 // waitFor is generous because each fake rex is a new process of a race-enabled binary.
