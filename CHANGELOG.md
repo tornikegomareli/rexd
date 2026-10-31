@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- Each set of folders is now its own installation. With custom `XDG_DATA_HOME` or `XDG_STATE_HOME`, or another `$HOME`, rexd uses a LaunchAgent named after those folders, so `setup` and `teardown` no longer replace or remove the normal agent. If you already run rexd with custom folders, run `launchctl bootout gui/$(id -u)/io.github.tornikegomareli.rexd` and delete `~/Library/LaunchAgents/io.github.tornikegomareli.rexd.plist` before `rexd setup`.
+- `rexd teardown` works after Rex is removed.
+- A failed `rexd setup` puts back the modules and `rexd.lua` it rewrote.
+- A failed copy no longer loses a plugin's old config code.
+- One `rexd` command checking for the daemon can no longer make a crashed daemon look alive to another, which could signal an unrelated process.
+- `rexd update` prints that it checks the plugin's config, as `rexd install` does.
+
 ## 0.1.1
 
 - `rexd update` reports a plugin folder that git cannot read. Before, it printed "pinned to ;" and exited 0.
