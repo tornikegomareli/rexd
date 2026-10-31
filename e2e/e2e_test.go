@@ -997,6 +997,38 @@ func TestAPluginThatBreaksTheConfigIsNamed(t *testing.T) {
 	r.mustRexd("install", other)
 }
 
+// Another $HOME is another installation. launchd must run its daemon in that home.
+func TestAnotherHomeGetsItsOwnDaemon(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("LaunchAgents only exist on macOS")
+	}
+	r := newRig(t)
+	r.newSession("first")
+	home := filepath.Join(r.root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.env = slices.DeleteFunc(r.env, func(kv string) bool {
+		return strings.HasPrefix(kv, "XDG_") || strings.HasPrefix(kv, "HOME=")
+	})
+	r.env = append(r.env, "HOME="+home)
+	normalBefore := normalAgent(t)
+	t.Cleanup(func() {
+		r.rexd("teardown")
+		if got := normalAgent(t); got != normalBefore {
+			t.Errorf("the normal LaunchAgent changed: was %q, is %q", normalBefore, got)
+		}
+	})
+
+	out := r.mustRexd("setup", "--server", r.server, "--rex-config", r.init)
+	if !strings.Contains(out, "The daemon is running and starts at login") {
+		t.Fatalf("setup output:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local", "state", "rexd", "daemon.pid")); err != nil {
+		t.Errorf("the daemon does not use the home: %v", err)
+	}
+}
+
 // normalAgent describes the LaunchAgent of the normal installation, if there is one.
 func normalAgent(t *testing.T) string {
 	t.Helper()
