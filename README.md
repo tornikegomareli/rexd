@@ -36,7 +36,7 @@ The daemon starts each event script and watches it. If a script dies, the daemon
 
 ## A broken plugin cannot cost you your setup
 
-rexd edits your Rex config, so a mistake there must not cost you your setup.
+rexd edits your Rex config, and these rules protect it:
 
 - **Rex checks every change.** rexd loads a plugin in Rex's own checker before keeping it. If the check fails, every step undoes itself and your config stays as it was.
 - **An update never replaces a working version with a broken one.** The new version is built beside the old one, and it only moves into place after it passes the check.
