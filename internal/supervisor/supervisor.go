@@ -69,8 +69,13 @@ type Timing struct {
 	// CrashLimit is how many failures within CrashWindow make a script crashing.
 	CrashLimit  int
 	CrashWindow time.Duration
-	// ProbeInterval is how often to ask Rex while scripts wait for it.
+	// ProbeInterval is the first delay before asking Rex again while scripts wait
+	// for it. Rex can stay away for hours, such as overnight, and each question
+	// starts a process, so the delay doubles up to ProbeMax.
 	ProbeInterval time.Duration
+	// ProbeMax is the longest delay between questions. It is also the longest a
+	// script waits to start after Rex comes back.
+	ProbeMax time.Duration
 	// ProbeTimeout limits one question to Rex.
 	ProbeTimeout time.Duration
 	// StopTimeout is how long a script gets to exit after SIGINT, before SIGKILL.
@@ -86,6 +91,7 @@ func DefaultTiming() Timing {
 		CrashLimit:    5,
 		CrashWindow:   2 * time.Minute,
 		ProbeInterval: 2 * time.Second,
+		ProbeMax:      15 * time.Second,
 		ProbeTimeout:  10 * time.Second,
 		StopTimeout:   5 * time.Second,
 	}
@@ -113,10 +119,12 @@ type Supervisor struct {
 	units        map[string]*unit
 	pluginErrors map[string]string
 
-	rexState   state.RexState
-	probing    bool
-	probeAgain bool
-	probeTimer *time.Timer
+	rexState     state.RexState
+	probing      bool
+	probeAgain   bool
+	probeTimer   *time.Timer
+	probeDelay   time.Duration
+	lastProbeErr string
 
 	startedAt time.Time
 	dirty     bool
@@ -348,15 +356,22 @@ func (s *Supervisor) handleProbe(sessions []string, err error) {
 	switch {
 	case err != nil:
 		next = state.RexDown
-		if !errors.Is(err, rex.ErrNotRunning) {
+		// Rex being closed is normal. Anything else is worth one line, not one
+		// line per question.
+		if message := err.Error(); !errors.Is(err, rex.ErrNotRunning) && message != s.lastProbeErr {
 			s.log.Warn("could not ask Rex", "error", err)
+			s.lastProbeErr = message
 		}
 	case len(sessions) == 0:
 		next = state.RexNoSessions
 	}
+	if err == nil {
+		s.lastProbeErr = ""
+	}
 	if next != s.rexState {
 		s.log.Info("Rex changed", "from", s.rexState, "to", next)
 		s.rexState = next
+		s.probeDelay = 0
 		s.dirty = true
 	}
 
@@ -380,8 +395,10 @@ func (s *Supervisor) handleProbe(sessions []string, err error) {
 	}
 
 	if s.anyWaiting() {
+		timing := s.opts.Timing
+		s.probeDelay = nextDelay(s.probeDelay, timing.ProbeInterval, timing.ProbeMax)
 		stopTimer(s.probeTimer)
-		s.probeTimer = time.AfterFunc(s.opts.Timing.ProbeInterval, func() { s.post(s.requestProbe) })
+		s.probeTimer = time.AfterFunc(s.probeDelay, func() { s.post(s.requestProbe) })
 	}
 }
 

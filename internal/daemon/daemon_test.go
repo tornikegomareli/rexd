@@ -83,6 +83,7 @@ func startDaemon(t *testing.T, dirs paths.Dirs, fake *fakerex.Fake) *runningDaem
 	t.Helper()
 	timing := supervisor.DefaultTiming()
 	timing.ProbeInterval = 20 * time.Millisecond
+	timing.ProbeMax = 20 * time.Millisecond
 	timing.BackoffMin = 10 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &runningDaemon{cancel: cancel, done: make(chan error, 1)}

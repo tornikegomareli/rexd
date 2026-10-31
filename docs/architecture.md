@@ -72,7 +72,7 @@ A script is in one of these states:
 
 Waiting does not count as failing. To tell the two apart, the supervisor asks Rex with `rex ls`:
 
-- While scripts wait, it asks every 2 seconds.
+- While scripts wait, it asks after 2 seconds, then less and less often, up to every 15 seconds. Rex can stay closed for hours, and each question starts a process. So a script starts at most 15 seconds after Rex is back.
 - When a script exits, it asks once. If Rex is there, the script failed. If not, the script only went down with Rex.
 
 Exit statuses 3 and 4 mean Rex or a session was missing, so they never count as failures. Asking Rex covers any other way a script can go down with it, and it keeps working if Rex changes its exit statuses.

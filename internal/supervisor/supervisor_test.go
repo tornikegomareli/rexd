@@ -33,6 +33,7 @@ func fastTiming() Timing {
 		CrashLimit:    3,
 		CrashWindow:   time.Hour,
 		ProbeInterval: 20 * time.Millisecond,
+		ProbeMax:      40 * time.Millisecond,
 		ProbeTimeout:  waitFor,
 		StopTimeout:   2 * time.Second,
 	}
@@ -379,6 +380,39 @@ func TestWaitsWhileRexIsDown(t *testing.T) {
 	}
 }
 
+// Rex can be closed for hours, and every question starts a process.
+func TestAsksRexLessOftenWhileItStaysAway(t *testing.T) {
+	h := newHarness(t)
+	h.fake.SetDown(true)
+	h.setSpecs(h.script("watch", ""))
+	timing := fastTiming()
+	timing.ProbeInterval = 50 * time.Millisecond
+	timing.ProbeMax = time.Hour
+	h.run(timing)
+
+	h.eventually("rex to be down", func() bool { return h.rexState() == state.RexDown })
+	time.Sleep(time.Second)
+	// At a steady 50ms this would be about 20. Doubling from there gives about 4.
+	if calls := len(h.fake.Calls()); calls > 8 {
+		t.Fatalf("asked Rex %d times in about a second", calls)
+	}
+}
+
+func TestReturnsQuicklyAfterRexComesBack(t *testing.T) {
+	h := newHarness(t)
+	h.fake.SetDown(true)
+	h.setSpecs(h.script("watch", ""))
+	timing := fastTiming()
+	timing.ProbeInterval = 10 * time.Millisecond
+	timing.ProbeMax = 100 * time.Millisecond
+	h.run(timing)
+	h.eventually("rex to be down", func() bool { return h.rexState() == state.RexDown })
+	time.Sleep(500 * time.Millisecond)
+
+	h.fake.SetDown(false)
+	h.waitState("watch", state.ScriptRunning)
+}
+
 func TestWaitsForAFirstSession(t *testing.T) {
 	h := newHarness(t)
 	h.fake.SetSessions()
@@ -598,7 +632,8 @@ func TestNextDelay(t *testing.T) {
 func TestDefaultTimingMatchesTheDocs(t *testing.T) {
 	timing := DefaultTiming()
 	if timing.BackoffMin != time.Second || timing.BackoffMax != time.Minute || timing.ResetAfter != time.Minute ||
-		timing.CrashLimit != 5 || timing.CrashWindow != 2*time.Minute || timing.StopTimeout != 5*time.Second {
+		timing.CrashLimit != 5 || timing.CrashWindow != 2*time.Minute || timing.StopTimeout != 5*time.Second ||
+		timing.ProbeInterval != 2*time.Second || timing.ProbeMax != 15*time.Second {
 		t.Fatalf("timing = %+v", timing)
 	}
 }
