@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- `rexd update` reports a plugin folder that git cannot read. Before, it printed "pinned to ;" and exited 0.
+- Pressing Ctrl-C during `rexd teardown` no longer deletes the LaunchAgent's file while launchd may still be stopping the agent.
+- The hint for a missing Rex links to Rex's public site.
+
 ## 0.1.0
 
 The first version.
