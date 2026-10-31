@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+- The README and `rexd help update` now say what the checks cover: Rex checks config code, and not event scripts.
+- If an installed plugin makes Rex's checker fail, rexd names that plugin and how to fix it, instead of blaming your config. `rexd update` of that plugin can now fix it.
+- `rexd status` shows `error` in the table for config code Rex rejects, and `--json` has `config_broken`.
+- Processes a script started now stop when the script exits. A crash-looping plugin left one more behind on each restart.
+- `rexd update` of a git plugin uses a fresh clone. It could fail on every run after a build step changed a tracked file.
+- An installation under another `$HOME` now gets a daemon that uses that home.
+
 ## 0.2.1
 
 - Install with Homebrew: `brew install tornikegomareli/tap/rexd`. Go is no longer needed.
