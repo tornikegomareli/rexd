@@ -303,18 +303,6 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 	}
 	undo.push(func() error { return os.RemoveAll(dir) })
 
-	entry := rexconfig.Entry{ID: man.ID, Version: man.Version, Dir: dir}
-	if man.Config != "" {
-		if err := layout.InstallModule(man.ID, filepath.Join(dir, filepath.Clean(man.Config)), link); err != nil {
-			return nil, err
-		}
-		undo.push(func() error { return layout.RemoveModule(man.ID) })
-		m.printf("Checking the plugin's config")
-		if err := layout.Check(ctx, client, entry); err != nil {
-			return nil, pluginConfigError(man.ID, err)
-		}
-	}
-
 	now := time.Now()
 	plugin = &state.Plugin{
 		ID:          man.ID,
@@ -327,18 +315,20 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 		InstalledAt: now,
 		UpdatedAt:   now,
 	}
-	current.Plugins[man.ID] = plugin
-	undo.push(func() error {
-		delete(current.Plugins, man.ID)
-		return layout.WriteIndex(m.entries(current, layout))
-	})
-	if err := layout.WriteIndex(m.entries(current, layout)); err != nil {
-		return nil, err
-	}
-	if err := client.CheckConfig(ctx, layout.Init); err != nil {
-		return nil, pluginConfigError(man.ID, err)
-	}
-	if err := current.Save(m.Dirs.StateFile()); err != nil {
+	err = m.activate(ctx, activation{
+		current: current,
+		layout:  layout,
+		client:  client,
+		man:     man,
+		dir:     dir,
+		link:    link,
+		apply:   func() { current.Plugins[man.ID] = plugin },
+		revert:  func() { delete(current.Plugins, man.ID) },
+		configError: func(err error) error {
+			return pluginConfigError(man.ID, err)
+		},
+	}, &undo)
+	if err != nil {
 		return nil, err
 	}
 
@@ -347,6 +337,55 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 	}
 	m.notifyDaemon(len(man.Scripts) > 0)
 	return plugin, nil
+}
+
+// activation is one version of a plugin to make live, in a folder that is already
+// in place.
+type activation struct {
+	current *state.State
+	layout  rexconfig.Layout
+	client  rex.Client
+	man     *manifest.Manifest
+	dir     string
+	link    bool
+	// apply records the version in the state, and revert takes it out again.
+	apply, revert func()
+	// configError explains a failure from Rex's checker.
+	configError func(error) error
+}
+
+// activate makes a version live: its config code, rexd.lua and the state, with Rex's
+// checker deciding before anything is saved. On failure, the steps it pushed onto
+// undo put everything back.
+func (m *Manager) activate(ctx context.Context, a activation, undo *undoStack) error {
+	restoreModule, err := m.replaceModule(a.layout, a.man, a.dir, a.link)
+	if err != nil {
+		return err
+	}
+	// One step, in this order: rexd.lua lists a plugin if its config file exists,
+	// so the file has to be back before rexd.lua is written.
+	undo.push(func() error {
+		a.revert()
+		if err := restoreModule(); err != nil {
+			return err
+		}
+		return a.layout.WriteIndex(m.entries(a.current, a.layout))
+	})
+	if a.man.Config != "" {
+		m.printf("Checking the plugin's config")
+		entry := rexconfig.Entry{ID: a.man.ID, Version: a.man.Version, Dir: a.dir}
+		if err := a.layout.Check(ctx, a.client, entry); err != nil {
+			return a.configError(err)
+		}
+	}
+	a.apply()
+	if err := a.layout.WriteIndex(m.entries(a.current, a.layout)); err != nil {
+		return err
+	}
+	if err := a.client.CheckConfig(ctx, a.layout.Init); err != nil {
+		return a.configError(err)
+	}
+	return a.current.Save(m.Dirs.StateFile())
 }
 
 // checkExistingConfig stops a change when the user's config is already broken.
@@ -561,38 +600,24 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 		undo.push(func() error { return os.RemoveAll(dir) })
 	}
 
-	restoreModule, err := m.replaceModule(layout, man, dir, link)
-	if err != nil {
-		return result, nil, err
-	}
-	// One step, in this order: rexd.lua lists a plugin if its config file exists,
-	// so the file has to be back before rexd.lua is written.
 	previous := *p
-	undo.push(func() error {
-		*p = previous
-		if err := restoreModule(); err != nil {
-			return err
-		}
-		return layout.WriteIndex(m.entries(current, layout))
-	})
-	if man.Config != "" {
-		entry := rexconfig.Entry{ID: man.ID, Version: man.Version, Dir: dir}
-		if err := layout.Check(ctx, client, entry); err != nil {
-			return result, nil, updateConfigError(err)
-		}
-	}
-
-	p.Version = man.Version
-	p.Commit = commit
-	p.Generation++
-	p.UpdatedAt = time.Now()
-	if err := layout.WriteIndex(m.entries(current, layout)); err != nil {
-		return result, nil, err
-	}
-	if err := client.CheckConfig(ctx, layout.Init); err != nil {
-		return result, nil, updateConfigError(err)
-	}
-	if err := current.Save(m.Dirs.StateFile()); err != nil {
+	err = m.activate(ctx, activation{
+		current: current,
+		layout:  layout,
+		client:  client,
+		man:     man,
+		dir:     dir,
+		link:    link,
+		apply: func() {
+			p.Version = man.Version
+			p.Commit = commit
+			p.Generation++
+			p.UpdatedAt = time.Now()
+		},
+		revert:      func() { *p = previous },
+		configError: updateConfigError,
+	}, &undo)
+	if err != nil {
 		return result, nil, err
 	}
 
