@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Install with Homebrew: `brew install tornikegomareli/tap/rexd`. Go is no longer needed.
+- Each release has archives for macOS and Linux, on arm64 and amd64.
+- The LaunchAgent keeps the path rexd was started through. Under Homebrew, it named a versioned folder that an upgrade removes.
+
 ## 0.2.0
 
 - Each set of folders is now its own installation. With custom `XDG_DATA_HOME` or `XDG_STATE_HOME`, or another `$HOME`, rexd uses a LaunchAgent named after those folders, so `setup` and `teardown` no longer replace or remove the normal agent. If you already run rexd with custom folders, run `launchctl bootout gui/$(id -u)/io.github.tornikegomareli.rexd` and delete `~/Library/LaunchAgents/io.github.tornikegomareli.rexd.plist` before `rexd setup`.

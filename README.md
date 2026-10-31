@@ -52,25 +52,27 @@ A plugin's build steps and scripts run as you, like any program you install. Ins
 ## Install
 
 ```sh
-go install github.com/tornikegomareli/rexd/cmd/rexd@latest
+brew install tornikegomareli/tap/rexd
 rexd setup
 ```
 
 `rexd setup` connects rexd to Rex and starts the daemon. It is safe to run again, and it repairs whatever is missing.
 
-`go install` puts `rexd` in your Go bin folder, usually `~/go/bin`. If that folder is not on your `PATH`, choose another one:
+To update, run `brew upgrade rexd`, then `rexd setup`. `rexd setup` restarts the daemon with the new version.
+
+Without Homebrew, download an archive from the [releases](https://github.com/tornikegomareli/rexd/releases), or build it with Go 1.24 or newer:
 
 ```sh
-GOBIN="$HOME/.local/bin" go install github.com/tornikegomareli/rexd/cmd/rexd@latest
+go install github.com/tornikegomareli/rexd/cmd/rexd@latest
 ```
+
+`go install` puts `rexd` in your Go bin folder, usually `~/go/bin`. If that folder is not on your `PATH`, set `GOBIN` to one that is. To update, run the same command again, then `rexd setup`.
 
 Requirements:
 
 - Rex. rexd finds the `rex` command on your `PATH`, or the copy inside the macOS app. Set `REXD_REX` to use another one.
-- Go 1.24 or newer to build it, and git to install plugins from GitHub.
+- git, to install plugins from GitHub.
 - macOS, Linux or FreeBSD. On macOS, `rexd setup` makes the daemon start at login. On the others, see [Running without a LaunchAgent](#running-without-a-launchagent).
-
-To update rexd itself, run the `go install` command again, then `rexd setup`. `rexd setup` restarts the daemon with the new version.
 
 To try it, install the example plugin:
 
@@ -155,7 +157,7 @@ Use `rexd setup --no-service`, then keep `rexd daemon` running however you like.
 Description=rexd
 
 [Service]
-ExecStart=%h/go/bin/rexd daemon
+ExecStart=%h/.local/bin/rexd daemon
 Restart=always
 
 [Install]
