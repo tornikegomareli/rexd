@@ -1,0 +1,14 @@
+id = "rexd.bell-notify"
+name = "Bell notify"
+version = "0.1.0"
+description = "Shows a macOS notification when a terminal rings its bell, and names the session."
+license = "MIT"
+rex_api = 7
+
+# Config code loads inside Rex. It defines actions and key bindings.
+config = "rex/config.lua"
+
+# Event scripts run under the rexd daemon. Only they can receive events.
+[[scripts]]
+name = "notify"
+path = "rex/notify.lua"

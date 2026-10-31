@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tornikegomareli/rexd/internal/cli"
 	"github.com/tornikegomareli/rexd/internal/rex"
 	"github.com/tornikegomareli/rexd/internal/service"
 	"github.com/tornikegomareli/rexd/internal/state"
@@ -40,7 +41,12 @@ func TestMain(m *testing.M) {
 		}
 		defer os.RemoveAll(dir)
 		rexdBinary = filepath.Join(dir, "rexd")
-		if out, err := exec.Command("go", "build", "-o", rexdBinary, "../cmd/rexd").CombinedOutput(); err != nil {
+		args := []string{"build", "-o", rexdBinary}
+		// A race-enabled rexd finds races in the real daemon, but starts slowly.
+		if os.Getenv("REXD_E2E_RACE") != "" {
+			args = append(args, "-race")
+		}
+		if out, err := exec.Command("go", append(args, "../cmd/rexd")...).CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "building rexd: %v\n%s", err, out)
 			return 1
 		}
@@ -82,7 +88,7 @@ func newRig(t *testing.T) *rig {
 		rexPath: rexPath,
 		server:  "unix://" + filepath.Join(root, "rex.sock"),
 		init:    filepath.Join(root, "config", "rex", "init.lua"),
-		marker:  filepath.Join(root, "marker.txt"),
+		marker:  filepath.Join(root, "state", "e2e-marker.txt"),
 	}
 	if err := os.MkdirAll(filepath.Dir(r.init), 0o755); err != nil {
 		t.Fatal(err)
@@ -97,7 +103,6 @@ func newRig(t *testing.T) *rig {
 		"REXD_REX="+rexPath,
 		"XDG_DATA_HOME="+filepath.Join(root, "data"),
 		"XDG_STATE_HOME="+filepath.Join(root, "state"),
-		"REXD_E2E_MARKER="+r.marker,
 	)
 	t.Cleanup(func() {
 		r.stopDaemon()
@@ -285,11 +290,17 @@ func (r *rig) stopDaemon() {
 		return
 	}
 	r.daemonCmd.Process.Signal(syscall.SIGTERM)
-	exited := make(chan struct{})
-	go func() { r.daemonCmd.Wait(); close(exited) }()
+	exited := make(chan error, 1)
+	go func() { exited <- r.daemonCmd.Wait() }()
 	select {
-	case <-exited:
+	case err := <-exited:
+		// A daemon told to stop exits cleanly. A race in it would show up here too.
+		if err != nil {
+			output, _ := os.ReadFile(filepath.Join(r.root, "daemon.out"))
+			r.t.Errorf("the daemon exited with %v\n%s", err, output)
+		}
 	case <-time.After(15 * time.Second):
+		r.t.Error("the daemon did not stop on SIGTERM")
 		r.daemonCmd.Process.Kill()
 		<-exited
 	}
@@ -375,7 +386,8 @@ rex.action{
 }
 rex.bind("ctrl+alt+shift+f12", %q)
 `, action, action),
-		"rex/probe.lua": `local marker = os.getenv("REXD_E2E_MARKER")
+		// A LaunchAgent only passes on a few variables, and this is one of them.
+		"rex/probe.lua": `local marker = os.getenv("XDG_STATE_HOME") .. "/e2e-marker.txt"
 local function record(line)
   local file = io.open(marker, "a")
   file:write(line .. "\n")
@@ -832,6 +844,134 @@ func TestPluginInAPathWithSpaces(t *testing.T) {
 	}
 	r.waitRunning(probeID, 0)
 	r.waitMarker("started " + probeID + " 1.0")
+}
+
+// The whole path through the command line with a real LaunchAgent: setup installs
+// it, launchd starts the daemon, teardown removes it. It runs the command line
+// in-process, to give it a label of its own, so a real installation stays untouched.
+func TestSetupAndTeardownWithALaunchAgent(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("LaunchAgents only exist on macOS")
+	}
+	r := newRig(t)
+	r.newSession("first")
+	for _, kv := range r.env {
+		name, value, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "XDG_") || strings.HasPrefix(name, "REXD_") {
+			t.Setenv(name, value)
+		}
+	}
+	label := fmt.Sprintf("%s.e2e-cli.%d", service.Label, os.Getpid())
+	run := func(args ...string) string {
+		t.Helper()
+		var out bytes.Buffer
+		code := cli.Main(args, cli.Options{Stdout: &out, Stderr: &out, ServiceLabel: label, Executable: rexdBinary})
+		if code != 0 {
+			t.Fatalf("rexd %v: exit %d\n%s", args, code, out.String())
+		}
+		return out.String()
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := service.Uninstall(ctx, label); err != nil {
+			t.Errorf("cleaning up the LaunchAgent: %v", err)
+		}
+	})
+
+	out := run("setup", "--server", r.server, "--rex-config", r.init)
+	if !strings.Contains(out, "The daemon is running and starts at login") {
+		t.Fatalf("setup output:\n%s", out)
+	}
+	path, err := service.PlistPath(label)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plist, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plist), rexdBinary) {
+		t.Errorf("the plist does not run rexd:\n%s", plist)
+	}
+
+	run("install", r.plugin(probeID, "e2e_probe", "1.0"))
+	script := r.waitRunning(probeID, 0)
+	r.waitMarker("started " + probeID + " 1.0")
+
+	// Setup again must leave one daemon and one copy of each script.
+	run("setup", "--server", r.server, "--rex-config", r.init)
+	r.waitRunning(probeID, script.PID)
+	r.newSession("once")
+	r.waitMarker("session once")
+	time.Sleep(200 * time.Millisecond)
+	if got := r.markerCount("session once"); got != 1 {
+		t.Errorf("the event was handled %d times", got)
+	}
+
+	run("teardown")
+	if r.status().Daemon.Running {
+		t.Error("the daemon is still running")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("the plist is still there: %v", err)
+	}
+	if got, _ := os.ReadFile(r.init); strings.Contains(string(got), "rexd") {
+		t.Errorf("init.lua still loads rexd: %q", got)
+	}
+}
+
+// fakeOsascript puts a program named osascript first on the PATH. It writes its
+// arguments to the marker file, so a test sees the notification without one
+// appearing on the screen.
+func (r *rig) fakeOsascript() {
+	r.t.Helper()
+	bin := filepath.Join(r.root, "fakebin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	script := "#!/bin/sh\necho \"osascript $*\" >> \"$XDG_STATE_HOME/e2e-marker.txt\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "osascript"), []byte(script), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	r.env = append(r.env, "PATH="+bin+":"+os.Getenv("PATH"))
+}
+
+// The example plugin, with a real bell from a real terminal in Rex.
+func TestExamplePlugin(t *testing.T) {
+	r := newRig(t)
+	r.fakeOsascript()
+	// Config actions run inside the server, so it needs the fake on its PATH too.
+	r.stopServer()
+	r.startServer()
+	r.setup()
+	r.newSession("first")
+	r.startDaemon()
+	example, err := filepath.Abs("../examples/bell-notify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := r.mustRexd("install", example); !strings.Contains(out, "Installed rexd.bell-notify") {
+		t.Fatalf("install output:\n%s", out)
+	}
+	r.waitRunning("rexd.bell-notify", 0)
+	r.eventually("the script to listen", func() bool {
+		return strings.Contains(r.mustRexd("logs", "rexd.bell-notify"), "listening for terminal bells")
+	})
+
+	// A new session whose program rings the terminal bell.
+	r.rex("new", "ringing", "-c", r.root, "--json", "--", "/bin/sh", "-c", `sleep 1; printf '\a'; sleep 30`)
+	r.eventually("the notification", func() bool {
+		return strings.Contains(r.markerText(), "Bell in ringing")
+	})
+
+	// The action defined in its config code works too.
+	if out, err := r.runAction("bell_notify_test", "first"); err != nil {
+		t.Fatalf("action: %v\n%s", err, out)
+	}
+	r.eventually("the test notification", func() bool {
+		return strings.Contains(r.markerText(), "Version 0.1.0 is working")
+	})
 }
 
 // This test uses launchd for real, with a label of its own. It never touches the
