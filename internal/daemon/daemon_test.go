@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tornikegomareli/rexd/internal/lockfile"
 	"github.com/tornikegomareli/rexd/internal/manifest"
 	"github.com/tornikegomareli/rexd/internal/paths"
 	"github.com/tornikegomareli/rexd/internal/state"
@@ -161,6 +162,22 @@ func TestSecondDaemonIsRefused(t *testing.T) {
 	if !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+func TestStartIsNotConfusedByARunningCheck(t *testing.T) {
+	dirs := testDirs(t)
+	// A check holds the lock for an instant. Here it holds it longer, to be sure.
+	check, err := lockfile.TryAcquire(dirs.DaemonLock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(150*time.Millisecond, func() { check.Release() })
+
+	lock, err := acquireDaemonLock(dirs)
+	if err != nil {
+		t.Fatalf("the daemon lost to a check: %v", err)
+	}
+	lock.Release()
 }
 
 func TestRunning(t *testing.T) {

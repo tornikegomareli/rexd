@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/tornikegomareli/rexd/internal/fsutil"
 	"github.com/tornikegomareli/rexd/internal/lockfile"
@@ -30,6 +31,11 @@ import (
 	"github.com/tornikegomareli/rexd/internal/rex"
 	"github.com/tornikegomareli/rexd/internal/state"
 	"github.com/tornikegomareli/rexd/internal/supervisor"
+)
+
+const (
+	lockAttempts   = 10
+	lockRetryDelay = 100 * time.Millisecond
 )
 
 // ErrAlreadyRunning means another daemon holds the lock.
@@ -53,10 +59,7 @@ type Options struct {
 // says to stop. SIGHUP makes it read the state again.
 func Run(ctx context.Context, opts Options) error {
 	dirs := opts.Dirs
-	lock, err := lockfile.TryAcquire(dirs.DaemonLock())
-	if errors.Is(err, lockfile.ErrHeld) {
-		return ErrAlreadyRunning
-	}
+	lock, err := acquireDaemonLock(dirs)
 	if err != nil {
 		return err
 	}
@@ -113,6 +116,21 @@ func Run(ctx context.Context, opts Options) error {
 		Logger:     log,
 		Timing:     timing,
 	}).Run(ctx, reload)
+}
+
+// acquireDaemonLock takes the lock, retrying for a moment. Running holds the lock
+// for an instant when it checks for a daemon, and that must not look like one.
+func acquireDaemonLock(dirs paths.Dirs) (*lockfile.Lock, error) {
+	for attempt := 0; ; attempt++ {
+		lock, err := lockfile.TryAcquire(dirs.DaemonLock())
+		if !errors.Is(err, lockfile.ErrHeld) {
+			return lock, err
+		}
+		if attempt == lockAttempts {
+			return nil, ErrAlreadyRunning
+		}
+		time.Sleep(lockRetryDelay)
+	}
 }
 
 // LoadDesired works out which scripts should run from the state and each
