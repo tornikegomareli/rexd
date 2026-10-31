@@ -36,10 +36,6 @@ func runLogs(ctx context.Context, a *app, args []string) error {
 	}
 	files, err := logFiles(dirs, fs.Args(), *script, *daemonLog)
 	if err != nil {
-		var usage usageError
-		if errors.As(err, &usage) {
-			return usage
-		}
 		return err
 	}
 	if *follow && len(files) > 1 {

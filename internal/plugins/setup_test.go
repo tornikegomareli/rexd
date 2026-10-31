@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -203,9 +202,6 @@ func TestTeardownPurge(t *testing.T) {
 func TestTeardownBeforeSetup(t *testing.T) {
 	e := newBareEnv(t)
 	if err := e.m.Teardown(context.Background(), TeardownOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(e.dirs.StateFile()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}
 }

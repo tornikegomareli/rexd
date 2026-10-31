@@ -225,9 +225,6 @@ func (a *app) printCommandHelp(w io.Writer, c *command, fs *flag.FlagSet) {
 	if c.help != "" {
 		fmt.Fprintf(w, "\n%s\n", strings.TrimSpace(c.help))
 	}
-	if fs == nil {
-		return
-	}
 	var flags strings.Builder
 	fs.VisitAll(func(f *flag.Flag) {
 		dashes := "--"

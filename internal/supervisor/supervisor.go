@@ -474,9 +474,9 @@ func (s *Supervisor) start(u *unit, session string) {
 	go func() {
 		err := cmd.Wait()
 		ended := time.Now()
-		code := exitCode(cmd, err)
+		code := exitCode(cmd)
 		lines.Flush() // Wait has returned, so nothing else writes to lines now.
-		if code == -1 && err != nil {
+		if code == -1 {
 			note(output, "rexd: exited: %v", err)
 		} else {
 			note(output, "rexd: exited with status %d", code)
@@ -499,12 +499,9 @@ func (s *Supervisor) startFailed(u *unit, err error) {
 	s.fail(u)
 }
 
-func exitCode(cmd *exec.Cmd, err error) int {
+func exitCode(cmd *exec.Cmd) int {
 	if cmd.ProcessState != nil {
 		return cmd.ProcessState.ExitCode()
-	}
-	if err == nil {
-		return 0
 	}
 	return -1
 }
