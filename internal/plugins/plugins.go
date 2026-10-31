@@ -45,8 +45,15 @@ func (m *Manager) printf(format string, args ...any) {
 	fmt.Fprintf(m.Out, format+"\n", args...)
 }
 
-func (m *Manager) lock() (*lockfile.Lock, error) {
-	return lockfile.Acquire(m.Dirs.StateLock())
+// lock waits for any other rexd command that is changing things, such as one
+// running a long build. It says so, because the wait would otherwise look like a hang.
+func (m *Manager) lock(ctx context.Context) (*lockfile.Lock, error) {
+	lock, err := lockfile.TryAcquire(m.Dirs.StateLock())
+	if !errors.Is(err, lockfile.ErrHeld) {
+		return lock, err
+	}
+	m.printf("Waiting for another rexd command to finish")
+	return lockfile.Acquire(ctx, m.Dirs.StateLock())
 }
 
 // client returns the rex client for the saved settings.
@@ -231,7 +238,7 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 // Install adds a plugin. It fetches and builds first, so a failure there touches
 // nothing outside the staging folder.
 func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin, err error) {
-	lock, err := m.lock()
+	lock, err := m.lock(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +371,7 @@ func pluginConfigError(id string, err error) error {
 // Remove deletes a plugin. A linked plugin only loses the link, and its source
 // folder stays.
 func (m *Manager) Remove(ctx context.Context, id string) error {
-	lock, err := m.lock()
+	lock, err := m.lock(ctx)
 	if err != nil {
 		return err
 	}
@@ -415,7 +422,7 @@ type UpdateResult struct {
 // Update brings plugins up to date, all of them if ids is empty. A plugin that
 // fails stays on its old version and the others continue.
 func (m *Manager) Update(ctx context.Context, ids []string) ([]UpdateResult, error) {
-	lock, err := m.lock()
+	lock, err := m.lock(ctx)
 	if err != nil {
 		return nil, err
 	}

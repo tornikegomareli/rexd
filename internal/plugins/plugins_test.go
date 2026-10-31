@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/tornikegomareli/rexd/internal/lockfile"
 	"github.com/tornikegomareli/rexd/internal/paths"
 	"github.com/tornikegomareli/rexd/internal/rex"
 	"github.com/tornikegomareli/rexd/internal/rexconfig"
@@ -457,6 +459,27 @@ func TestInstallReplacesALeftoverFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	missing(t, filepath.Join(e.dirs.Plugin("acme.foo"), "leftover.txt"))
+}
+
+func TestWaitingForAnotherCommandSaysSoAndCanBeCancelled(t *testing.T) {
+	e := newEnv(t)
+	held, err := lockfile.Acquire(context.Background(), e.dirs.StateLock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	src := configPlugin(t, "acme.foo", "1.0", "-- x")
+	_, err = e.m.Install(ctx, Source{Kind: state.KindCopy, Location: src})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(e.out.String(), "Waiting for another rexd command") {
+		t.Errorf("output:\n%s", e.out)
+	}
+	missing(t, e.dirs.Plugin("acme.foo"))
 }
 
 func TestRemove(t *testing.T) {

@@ -96,6 +96,9 @@ func Main(args []string, opts Options) int {
 		return 0
 	case errors.Is(err, flag.ErrHelp):
 		return 0
+	case errors.Is(err, context.Canceled):
+		fmt.Fprintln(a.stderr, "rexd: interrupted")
+		return 130
 	case errors.As(err, new(usageError)):
 		fmt.Fprintf(a.stderr, "rexd %s: %v\nUsage: rexd %s %s\n", cmd.name, err, cmd.name, cmd.args)
 		return 2

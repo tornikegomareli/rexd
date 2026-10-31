@@ -25,7 +25,7 @@ type SetupOptions struct {
 // Setup connects rexd to Rex's config: it adds the line to init.lua and writes
 // the generated file. Running it again repairs whatever is missing.
 func (m *Manager) Setup(ctx context.Context, opts SetupOptions) (settings *state.Settings, err error) {
-	lock, err := m.lock()
+	lock, err := m.lock(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ type TeardownOptions struct {
 // Teardown undoes Setup. Installed plugins stay unless Purge is set, so a later
 // setup brings them back. The caller stops the daemon first.
 func (m *Manager) Teardown(ctx context.Context, opts TeardownOptions) error {
-	lock, err := m.lock()
+	lock, err := m.lock(ctx)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package lockfile
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -26,16 +27,42 @@ func TestTryAcquireFailsWhileHeld(t *testing.T) {
 	again.Release()
 }
 
+func TestAcquireCanBeCancelled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.lock")
+	held, err := Acquire(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	got := make(chan error, 1)
+	go func() {
+		_, err := Acquire(ctx, path)
+		got <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-got:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Acquire ignored the cancelled context")
+	}
+}
+
 func TestAcquireWaits(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.lock")
-	held, err := Acquire(path)
+	held, err := Acquire(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	got := make(chan *Lock)
 	go func() {
-		l, err := Acquire(path)
+		l, err := Acquire(context.Background(), path)
 		if err != nil {
 			t.Error(err)
 		}

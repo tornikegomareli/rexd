@@ -3,12 +3,16 @@
 package lockfile
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
+
+const retryDelay = 50 * time.Millisecond
 
 // ErrHeld means another process holds the lock.
 var ErrHeld = errors.New("lock is held by another process")
@@ -16,17 +20,25 @@ var ErrHeld = errors.New("lock is held by another process")
 // Lock is a held lock.
 type Lock struct{ f *os.File }
 
-// Acquire waits until it holds the lock at path.
-func Acquire(path string) (*Lock, error) {
-	return acquire(path, syscall.LOCK_EX)
+// Acquire waits until it holds the lock at path, or until ctx ends. It checks
+// again and again, because a blocking flock cannot be interrupted, and the person
+// waiting must be able to press Ctrl-C.
+func Acquire(ctx context.Context, path string) (*Lock, error) {
+	for {
+		lock, err := TryAcquire(path)
+		if !errors.Is(err, ErrHeld) {
+			return lock, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(retryDelay):
+		}
+	}
 }
 
 // TryAcquire takes the lock at path, or returns ErrHeld without waiting.
 func TryAcquire(path string) (*Lock, error) {
-	return acquire(path, syscall.LOCK_EX|syscall.LOCK_NB)
-}
-
-func acquire(path string, how int) (*Lock, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -35,7 +47,7 @@ func acquire(path string, how int) (*Lock, error) {
 		return nil, err
 	}
 	for {
-		err = syscall.Flock(int(f.Fd()), how)
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		if !errors.Is(err, syscall.EINTR) {
 			break
 		}
