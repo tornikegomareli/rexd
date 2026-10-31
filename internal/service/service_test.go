@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,5 +77,14 @@ func TestPlistPath(t *testing.T) {
 	}
 	if got != "/Users/me/Library/LaunchAgents/io.github.tornikegomareli.rexd.plist" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// launchctl cannot run under an ended context, and that must not read as "not loaded".
+func TestStopReportsAnEndedContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := Stop(ctx, "io.github.tornikegomareli.rexd.test.none"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
 	}
 }

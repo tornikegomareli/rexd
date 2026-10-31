@@ -149,7 +149,7 @@ func Uninstall(ctx context.Context, label string) error {
 // daemon SIGTERM, and the daemon stops its scripts.
 func Stop(ctx context.Context, label string) error {
 	if !Loaded(ctx, label) {
-		return nil
+		return ctx.Err()
 	}
 	// The result does not matter, because the wait below decides.
 	_, _ = launchctl(ctx, "bootout", serviceTarget(label))
@@ -162,7 +162,7 @@ func Stop(ctx context.Context, label string) error {
 			return err
 		}
 	}
-	return nil
+	return ctx.Err() // Loaded is also false when an ended context stopped launchctl.
 }
 
 // Loaded reports whether launchd knows the agent.
