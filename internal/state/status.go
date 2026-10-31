@@ -62,9 +62,11 @@ type DaemonStatus struct {
 
 // ScriptStatus describes one event script.
 type ScriptStatus struct {
-	Plugin string      `json:"plugin"`
-	Script string      `json:"script"`
-	State  ScriptState `json:"state"`
+	Plugin string `json:"plugin"`
+	Script string `json:"script"`
+	// Path is the script's file. A new daemon uses it to recognize leftover processes.
+	Path  string      `json:"path,omitempty"`
+	State ScriptState `json:"state"`
 	// PID is set while the process runs.
 	PID int `json:"pid,omitempty"`
 	// Since is when the script entered its state.

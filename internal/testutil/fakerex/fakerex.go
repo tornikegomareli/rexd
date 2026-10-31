@@ -290,6 +290,9 @@ func runScript(dir, script string) int {
 			return exitNoTarget
 		}
 	}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
 	wd, _ := os.Getwd()
 	appendJSONLine(filepath.Join(dir, fileStarts), Start{
 		Script:  script,
@@ -299,9 +302,6 @@ func runScript(dir, script string) int {
 		Plugin:  os.Getenv("REXD_PLUGIN_ID"),
 		Block:   os.Getenv("REX_BLOCK"),
 	})
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	data, err := os.ReadFile(script)
 	if err != nil {
