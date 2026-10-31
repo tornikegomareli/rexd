@@ -608,6 +608,21 @@ func TestUpdateLeavesAPinnedPluginAlone(t *testing.T) {
 	}
 }
 
+func TestUpdateReportsAPluginGitCannotRead(t *testing.T) {
+	e := newEnv(t)
+	repo := gitPlugin(t, "acme.foo", "1.0", "-- one")
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindGit, Location: "file://" + repo}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(e.dirs.Plugin("acme.foo"), ".git")); err != nil {
+		t.Fatal(err)
+	}
+	results, err := e.m.Update(context.Background(), nil)
+	if err == nil {
+		t.Fatalf("no error, results = %+v", results)
+	}
+}
+
 func TestUpdateBrokenVersionKeepsTheOldOne(t *testing.T) {
 	e := newEnv(t)
 	repo := gitPlugin(t, "acme.foo", "1.0", "-- one")

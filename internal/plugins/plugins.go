@@ -493,7 +493,11 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 		work = filepath.Join(staging, "plugin")
 		switch p.Kind {
 		case state.KindGit:
-			if _, err := git(ctx, dir, "symbolic-ref", "-q", "HEAD"); err != nil {
+			branch, err := git(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+			if err != nil {
+				return result, nil, err
+			}
+			if branch == "HEAD" { // Git's answer when no branch is checked out.
 				result.Note = "pinned to " + p.Ref + "; remove and install it to change that"
 				return result, nil, nil
 			}
