@@ -143,6 +143,46 @@ func TestSetupRefusesAFileItDidNotWrite(t *testing.T) {
 	missing(t, e.init)
 }
 
+func TestSetupWithABrokenConfigPutsBackWhatItRewrote(t *testing.T) {
+	e := newEnv(t)
+	src := configPlugin(t, "acme.foo", "1.0", "-- one")
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: src}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, e.layout.Module("acme.foo"), "-- edited")
+	index := read(t, e.layout.Index()) + "-- edited\n"
+	write(t, e.layout.Index(), index)
+	write(t, e.init, read(t, e.init)+"BROKEN\n")
+
+	_, err := e.m.Setup(context.Background(), SetupOptions{RexConfig: e.init})
+	if err == nil || !strings.Contains(err.Error(), "changed nothing") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := read(t, e.layout.Module("acme.foo")); got != "-- edited" {
+		t.Errorf("module = %q", got)
+	}
+	if got := read(t, e.layout.Index()); got != index {
+		t.Errorf("index = %q", got)
+	}
+}
+
+func TestSetupThatCannotWriteItsIndexLeavesNoModules(t *testing.T) {
+	e := newEnv(t)
+	src := configPlugin(t, "acme.foo", "1.0", "-- one")
+	if _, err := e.m.Install(context.Background(), Source{Kind: state.KindCopy, Location: src}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.m.Teardown(context.Background(), TeardownOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	write(t, e.layout.Index(), "-- my own module named rexd\n")
+
+	if _, err := e.m.Setup(context.Background(), SetupOptions{RexConfig: e.init}); err == nil {
+		t.Fatal("no error")
+	}
+	missing(t, e.layout.Module("acme.foo"))
+}
+
 func TestTeardownKeepsPlugins(t *testing.T) {
 	e := newEnv(t)
 	write(t, e.init, read(t, e.init)+"-- mine\n")

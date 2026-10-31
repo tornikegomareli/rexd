@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tornikegomareli/rexd/internal/fsutil"
 	"github.com/tornikegomareli/rexd/internal/manifest"
 	"github.com/tornikegomareli/rexd/internal/rex"
 	"github.com/tornikegomareli/rexd/internal/rexconfig"
@@ -52,16 +53,23 @@ func (m *Manager) Setup(ctx context.Context, opts SetupOptions) (settings *state
 		}
 	}()
 
-	indexExisted := fileExists(layout.Index())
-	if err := m.restoreModules(current, layout); err != nil {
+	if err := m.restoreModules(current, layout, &undo); err != nil {
 		return nil, err
 	}
+	previousIndex, err := os.ReadFile(layout.Index())
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	indexExisted := err == nil
 	if err := layout.WriteIndex(m.entries(current, layout)); err != nil {
 		return nil, err
 	}
-	if !indexExisted {
-		undo.push(func() error { return layout.RemoveAll() })
-	}
+	undo.push(func() error {
+		if indexExisted {
+			return fsutil.WriteFileAtomic(layout.Index(), previousIndex, 0o644)
+		}
+		return layout.RemoveAll()
+	})
 	restore, err := layout.AddRequire()
 	if err != nil {
 		return nil, err
@@ -101,7 +109,7 @@ func resolveConfigPath(ctx context.Context, client rex.Client, flag, saved strin
 
 // restoreModules puts config code back for plugins that are installed. Teardown
 // removes it, and installed plugins come back on the next setup.
-func (m *Manager) restoreModules(current *state.State, layout rexconfig.Layout) error {
+func (m *Manager) restoreModules(current *state.State, layout rexconfig.Layout, undo *undoStack) error {
 	for _, p := range current.SortedPlugins() {
 		dir := m.Dirs.Plugin(p.ID)
 		man, _, err := manifest.Load(dir)
@@ -109,12 +117,11 @@ func (m *Manager) restoreModules(current *state.State, layout rexconfig.Layout) 
 			m.printf("warning: skipping %s: %v", p.ID, err)
 			continue
 		}
-		if man.Config == "" {
-			continue
-		}
-		if err := layout.InstallModule(p.ID, filepath.Join(dir, filepath.Clean(man.Config)), p.Kind == state.KindLink); err != nil {
+		restore, err := m.replaceModule(layout, man, dir, p.Kind == state.KindLink)
+		if err != nil {
 			return err
 		}
+		undo.push(restore)
 	}
 	return nil
 }
