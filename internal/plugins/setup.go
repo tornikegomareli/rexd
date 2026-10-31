@@ -3,7 +3,6 @@ package plugins
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -69,11 +68,7 @@ func (m *Manager) Setup(ctx context.Context, opts SetupOptions) (settings *state
 	}
 	undo.push(restore)
 
-	if err := client.CheckConfig(ctx, layout.Init); err != nil {
-		var configErr *rex.ConfigError
-		if errors.As(err, &configErr) {
-			return nil, fmt.Errorf("your Rex config has errors, so rexd changed nothing. Fix these first:\n%s", configErr.Error())
-		}
+	if err := checkExistingConfig(ctx, client, layout); err != nil {
 		return nil, err
 	}
 
