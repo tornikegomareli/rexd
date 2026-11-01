@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2
+
+- `rexd update` only updates a plugin from a local folder if the folder changed. It used to count as updated every time. The first update after this upgrade still reports each one once.
+- An update that keeps the version now says `new code, still 1.0`, instead of `1.0 -> 1.0`.
+- The menu bar app says what an update changed, or that all plugins are up to date.
+- The menu bar app says why rexd cannot answer, such as when Rex is not installed, instead of saying rexd is missing.
+- The menu bar app shows the new version after rexd is upgraded, and its more button no longer draws faintly.
+
 ## 0.3.1
 
 - `Rexd.app`, a menu bar app that controls rexd, in `macos/`.
