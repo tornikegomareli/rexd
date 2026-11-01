@@ -304,6 +304,18 @@ extension RexdKitTests {
         #expect(model.screen == .list)
     }
 
+    /// `brew upgrade rexd` happens while the app runs.
+    @Test func theVersionFollowsAnUpgrade() async throws {
+        let fake = try FakeRexd()
+        let model = fake.model()
+        await model.refresh()
+        #expect(model.version == "v0.3.1")
+        let script = try String(contentsOfFile: fake.path, encoding: .utf8)
+        try script.replacingOccurrences(of: "rexd v0.3.1", with: "rexd v0.3.2").write(toFile: fake.path, atomically: true, encoding: .utf8)
+        await model.refresh()
+        #expect(model.version == "v0.3.2")
+    }
+
     @Test func updateAllSaysWhenNothingChanged() async throws {
         let fake = try FakeRexd(status: FakeRexd.withPlugin(), list: FakeRexd.fooList, script: #"echo "acme.foo: already up to date""#)
         let model = fake.model()

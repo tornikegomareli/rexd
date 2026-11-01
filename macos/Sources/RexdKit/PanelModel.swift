@@ -87,7 +87,7 @@ public final class PanelModel {
                 return !$0.isEmpty && FileManager.default.fileExists(atPath: folder.appendingPathComponent("rexd.lock").path)
             } ?? false
             phase = current.isConnected ? .ready : .notConnected
-            if version.isEmpty { version = (try? await client.version()) ?? "" }
+            version = (try? await client.version()) ?? version
             if case .plugin(let id) = screen, plugin(id) == nil { screen = .list }
         } catch {
             // The binary may have moved, as after an upgrade, so the next try finds it again.
