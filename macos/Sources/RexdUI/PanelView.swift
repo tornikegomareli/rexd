@@ -32,7 +32,11 @@ public struct PanelView: View {
         .background(theme.color("bg"))
         .environment(\.rex, theme)
         .preferredColorScheme(theme.colorScheme)
+        .onExitCommand { model.screen = .list }
         .onAppear {
+            // A menu bar app is not active just because its panel is open, and only an
+            // active app gets what is typed.
+            NSApp.activate(ignoringOtherApps: true)
             theme = fixedTheme ?? .current()
             model.isOpen = true
             Task { await model.refresh() }
@@ -260,6 +264,9 @@ private struct OptionsEditor: View {
     @State private var addingKey = ""
     @State private var addingValue = ""
     @State private var adding = false
+    @FocusState private var field: AddingField?
+
+    private enum AddingField { case key, value }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -277,8 +284,13 @@ private struct OptionsEditor: View {
             }
             if adding {
                 HStack(spacing: 6) {
-                    TextField("key", text: $addingKey).frame(width: 96)
-                    TextField("value", text: $addingValue).onSubmit(add)
+                    TextField("key", text: $addingKey)
+                        .frame(width: 96)
+                        .focused($field, equals: .key)
+                        .onSubmit { field = .value }
+                    TextField("value", text: $addingValue)
+                        .focused($field, equals: .value)
+                        .onSubmit(add)
                 }
                 .textFieldStyle(.plain)
                 .font(rex.mono(11.5))
@@ -287,6 +299,10 @@ private struct OptionsEditor: View {
                 .frame(height: 24)
                 .background(RoundedRectangle(cornerRadius: 5).fill(rex.color("term-bg")))
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(rex.color("accent")))
+                .task {
+                    try? await Task.sleep(for: .milliseconds(50))
+                    field = .key
+                }
             } else if plugin.options.isEmpty {
                 Text("None set. The plugin's README says which it has.")
                     .font(.system(size: 12))
@@ -403,7 +419,11 @@ private struct InstallScreen: View {
             }
         }
         .padding(12)
-        .onAppear { focused = true }
+        .task {
+            // The window only takes focus just after it appears.
+            try? await Task.sleep(for: .milliseconds(120))
+            focused = true
+        }
     }
 
     private var isFolder: Bool {

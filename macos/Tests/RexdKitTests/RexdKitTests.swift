@@ -120,6 +120,7 @@ extension RexdKitTests {
     @Test func aFailureSaysWhatRexdSaid() {
         #expect(RexdClient.failure(["Cloning x", "rexd: it broke", "line 2"], status: 1) == "it broke\nline 2")
         #expect(RexdClient.failure(["only this"], status: 1) == "only this")
+        #expect(RexdClient.failure(["rexd install: ./x does not exist", "Usage: rexd install SOURCE", "Flags:"], status: 2) == "./x does not exist")
         #expect(RexdClient.failure([], status: 3) == "rexd exited with status 3.")
     }
 }

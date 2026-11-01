@@ -123,12 +123,17 @@ public struct RexdClient: Sendable {
         }
     }
 
-    /// What a failed command said: its error, which starts with `rexd:`, and the lines after it.
+    /// What a failed command said: its error, which starts with `rexd:` or `rexd install:`,
+    /// and the lines after it, without the usage that a mistake in the arguments prints.
     static func failure(_ printed: [String], status: Int32) -> String {
         guard !printed.isEmpty else { return "rexd exited with status \(status)." }
-        let start = printed.lastIndex { $0.hasPrefix("rexd: ") } ?? max(printed.count - 8, 0)
-        let lines = printed[start...].joined(separator: "\n")
-        return lines.hasPrefix("rexd: ") ? String(lines.dropFirst("rexd: ".count)) : lines
+        let prefix = #/^rexd( [a-z]+)?: /#
+        let start = printed.lastIndex { $0.contains(prefix) } ?? max(printed.count - 8, 0)
+        var lines = Array(printed[start...])
+        if let usage = lines.firstIndex(where: { $0.hasPrefix("Usage: ") }) {
+            lines.removeSubrange(usage...)
+        }
+        return lines.joined(separator: "\n").replacing(prefix, with: "", maxReplacements: 1)
     }
 
     /// Runs a command that only reads. Its output goes to files: unlike a pipe, a file
