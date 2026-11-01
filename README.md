@@ -92,13 +92,14 @@ rexd sync
   <img src=".github/assets/menu-bar.png" width="340" alt="The rexd menu bar panel, with made-up plugins: one crashing, one restarting, one running a script, and one with actions and keys. Below them, the daemon is running, and a button updates all of them" />
 </p>
 
-`Rexd.app` puts all of this in your menu bar: install, update and remove plugins, set options, read logs, sync, and restart the daemon. It takes the colors and the font of your Rex, and a dot on its icon says when something needs a look. It only runs the `rexd` command, so you still need that. It needs macOS 14.
+`Rexd.app` puts all of this in your menu bar: install, update and remove plugins, set options, read logs, sync, and restart the daemon. It takes the colors and the font of your Rex, and a dot on its icon says when something needs a look. It only runs the `rexd` command, so install that first, as above. It needs macOS 14.
 
 ```sh
-cd macos
-scripts/package_app.sh
-open Rexd.app
+brew install --cask tornikegomareli/tap/rexd-app
+open /Applications/Rexd.app
 ```
+
+The app is signed and notarized.
 
 ## Commands
 
