@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `Rexd.app`, a menu bar app that controls rexd, in `macos/`.
+- `rexd status --json` has `rex_config`, the `init.lua` rexd is connected to.
+
 ## 0.3.0
 
 - Install a repository with no manifest, if it holds a Lua module with a `setup` function. Amber plugins use this format.
