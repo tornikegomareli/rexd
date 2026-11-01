@@ -1060,6 +1060,62 @@ func (r *rig) fakeOsascript() {
 }
 
 // The example plugin, with a real bell from a real terminal in Rex.
+// A real Rex loads a second Lua file, and options reach config code and scripts.
+func TestSeveralFilesAndOptions(t *testing.T) {
+	r := newRig(t)
+	r.setup()
+	r.newSession("first")
+	r.startDaemon()
+	dir, err := os.MkdirTemp(r.root, "src-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"rex-plugin.toml": `id = "e2e.files"
+name = "Files"
+version = "1.0"
+config = "rex/config.lua"
+
+[[scripts]]
+name = "probe"
+path = "rex/probe.lua"
+`,
+		"rex/config.lua": `local word = require("e2efiles.word")
+local options = rexd.plugin.options
+rex.action{
+  name = "e2e_files",
+  title = "Files",
+  run = function() return word.text .. " " .. tostring(options.color) .. " " .. tostring(options.size) end,
+}
+`,
+		"lua/e2efiles/word.lua": `return { text = "from-a-second-file" }`,
+		"rex/probe.lua": `local file = io.open(os.getenv("XDG_STATE_HOME") .. "/e2e-marker.txt", "a")
+file:write("script color " .. tostring(rex.args.color) .. "\n")
+file:close()
+rex.on("session_created", function() end)
+`,
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.mustRexd("install", dir)
+	if out, err := r.runAction("e2e_files", "first"); err != nil || !strings.Contains(out, "from-a-second-file nil nil") {
+		t.Fatalf("before options: %v\n%s", err, out)
+	}
+	if out := r.mustRexd("set", "e2e.files", "color=red", "size=3"); !strings.Contains(out, "color=red") {
+		t.Fatalf("set output:\n%s", out)
+	}
+	if out, err := r.runAction("e2e_files", "first"); err != nil || !strings.Contains(out, "from-a-second-file red 3") {
+		t.Fatalf("after options: %v\n%s", err, out)
+	}
+	r.waitMarker("script color red")
+}
+
 func TestExamplePlugin(t *testing.T) {
 	r := newRig(t)
 	r.fakeOsascript()

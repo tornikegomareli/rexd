@@ -153,7 +153,7 @@ func TestScriptCommand(t *testing.T) {
 	t.Setenv("REX_SESSION", "session:wrong")
 	c := rex.Client{Path: "rex", Server: "unix:///s.sock"}
 	wantArgs := []string{"--autostart=false", "-S", "unix:///s.sock", "do", "/p/notify.lua", "--all"}
-	if got := c.ScriptArgs("/p/notify.lua"); !slices.Equal(got, wantArgs) {
+	if got := c.ScriptArgs("/p/notify.lua", nil); !slices.Equal(got, wantArgs) {
 		t.Fatalf("args = %v", got)
 	}
 	env := c.ScriptEnv("session:right")
@@ -198,5 +198,14 @@ func TestLocalConfigPath(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	if got, _ := rex.LocalConfigPath(); got != filepath.Join(home, ".config/rex/init.lua") {
 		t.Errorf("default: got %q", got)
+	}
+}
+
+func TestScriptArgsPassOptions(t *testing.T) {
+	c := rex.Client{Path: "rex"}
+	got := c.ScriptArgs("/p/notify.lua", map[string]any{"b": "x y", "a": float64(2), "c": true})
+	want := []string{"do", "/p/notify.lua", "--all", "a=2", "b=x y", "c=true"}
+	if !slices.Equal(got[len(got)-len(want):], want) {
+		t.Fatalf("got %q", got)
 	}
 }

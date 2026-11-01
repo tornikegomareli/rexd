@@ -55,6 +55,8 @@ type Plugin struct {
 	Ref string `json:"ref,omitempty"`
 	// Commit is the checked out commit of a git plugin.
 	Commit string `json:"commit,omitempty"`
+	// Options are the values set with rexd set: strings, numbers and booleans.
+	Options map[string]any `json:"options,omitempty"`
 	// Generation goes up on every install and update. The daemon restarts a
 	// plugin's scripts when it changes.
 	Generation  int       `json:"generation"`

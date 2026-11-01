@@ -131,6 +131,15 @@ check fails, the old version stays. Rex does not check event scripts. A plugin
 installed at a tag or commit stays there.`,
 			run: runUpdate,
 		},
+		{
+			name: "set", args: "PLUGIN [KEY=VALUE...]",
+			summary: "Show or change a plugin's options",
+			help: `
+With no KEY=VALUE, prints the plugin's options. An empty value removes one, as in
+key=. Rex's checker reads the plugin with the new options, and a failure changes
+nothing. The plugin's README says which options it has.`,
+			run: runSet,
+		},
 		{name: "list", args: "[--json]", summary: "List installed plugins", run: runList},
 		{name: "status", args: "[--json]", summary: "Show the daemon, plugins and event scripts", run: runStatus},
 		{

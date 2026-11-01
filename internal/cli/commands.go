@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"text/tabwriter"
 	"time"
 
@@ -128,6 +130,59 @@ func runUpdate(ctx context.Context, a *app, args []string) error {
 		fmt.Fprintf(a.stdout, "No plugins are installed.\n")
 	}
 	return err
+}
+
+func runSet(ctx context.Context, a *app, args []string) error {
+	fs := a.flags("set")
+	if err := a.parse(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return usagef("needs one plugin")
+	}
+	id := fs.Arg(0)
+	if fs.NArg() == 1 {
+		return printOptions(a, id)
+	}
+	changes := map[string]any{}
+	for _, arg := range fs.Args()[1:] {
+		key, value, err := plugins.ParseOption(arg)
+		if err != nil {
+			return usageError{err.Error()}
+		}
+		changes[key] = value
+	}
+	m, err := a.manager()
+	if err != nil {
+		return err
+	}
+	if err := m.SetOptions(ctx, id, changes); err != nil {
+		return err
+	}
+	return printOptions(a, id)
+}
+
+func printOptions(a *app, id string) error {
+	dirs, err := paths.Default()
+	if err != nil {
+		return err
+	}
+	current, err := state.Load(dirs.StateFile())
+	if err != nil {
+		return err
+	}
+	p, ok := current.Plugins[id]
+	if !ok {
+		return fmt.Errorf("%s is not installed", id)
+	}
+	if len(p.Options) == 0 {
+		fmt.Fprintf(a.stdout, "%s has no options set.\n", id)
+		return nil
+	}
+	for _, key := range slices.Sorted(maps.Keys(p.Options)) {
+		fmt.Fprintf(a.stdout, "%s=%v\n", key, p.Options[key])
+	}
+	return nil
 }
 
 func (a *app) printJSON(v any) error {

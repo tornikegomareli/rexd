@@ -110,7 +110,7 @@ func (m *Manager) entries(current *state.State, layout rexconfig.Layout) []rexco
 }
 
 func (m *Manager) entry(p *state.Plugin) rexconfig.Entry {
-	return rexconfig.Entry{ID: p.ID, Version: p.Version, Dir: m.Dirs.Plugin(p.ID)}
+	return rexconfig.Entry{ID: p.ID, Version: p.Version, Dir: m.Dirs.Plugin(p.ID), Options: p.Options}
 }
 
 // CheckConfigCode says if a plugin has config code in Rex, and what Rex's checker
@@ -367,6 +367,7 @@ type activation struct {
 	man     *manifest.Manifest
 	dir     string
 	link    bool
+	options map[string]any
 	// apply records the version in the state, and revert takes it out again.
 	apply, revert func()
 	// configError explains a failure from Rex's checker.
@@ -392,7 +393,7 @@ func (m *Manager) activate(ctx context.Context, a activation, undo *undoStack) e
 	})
 	if a.man.Config != "" {
 		m.printf("Checking the plugin's config")
-		entry := rexconfig.Entry{ID: a.man.ID, Version: a.man.Version, Dir: a.dir}
+		entry := rexconfig.Entry{ID: a.man.ID, Version: a.man.Version, Dir: a.dir, Options: a.options}
 		if err := a.layout.Check(ctx, a.client, entry); err != nil {
 			return a.configError(err)
 		}
@@ -656,6 +657,7 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 		man:     man,
 		dir:     dir,
 		link:    link,
+		options: p.Options,
 		apply: func() {
 			p.Version = man.Version
 			p.Commit = commit

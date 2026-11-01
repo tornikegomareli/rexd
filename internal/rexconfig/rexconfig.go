@@ -13,9 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/tornikegomareli/rexd/internal/fsutil"
@@ -59,6 +61,8 @@ type Entry struct {
 	ID      string
 	Version string
 	Dir     string
+	// Options are the values set with rexd set: strings, numbers and booleans.
+	Options map[string]any
 }
 
 // luaPath renders the Lua expression that adds the plugin's Lua folder to
@@ -84,8 +88,8 @@ func Index(entries []Entry) []byte {
 	b.WriteString(generatedHeader + " Do not edit: use `rexd install` and `rexd remove`.\n")
 	b.WriteString(`rexd = { plugins = {} }
 
-local function load_plugin(id, version, dir)
-  local plugin = { id = id, version = version, dir = dir }
+local function load_plugin(id, version, dir, options)
+  local plugin = { id = id, version = version, dir = dir, options = options }
   rexd.plugins[id] = plugin
   rexd.plugin = plugin
   local ok, err = pcall(require, "rexd.plugins." .. id)
@@ -100,7 +104,7 @@ end
 		if path := e.luaPath(); path != "" {
 			fmt.Fprintf(&b, "package.path = %s\n", path)
 		}
-		fmt.Fprintf(&b, "load_plugin(%s, %s, %s)\n", luaString(e.ID), luaString(e.Version), luaString(e.Dir))
+		fmt.Fprintf(&b, "load_plugin(%s, %s, %s, %s)\n", luaString(e.ID), luaString(e.Version), luaString(e.Dir), luaTable(e.Options))
 	}
 	return b.Bytes()
 }
@@ -185,10 +189,10 @@ func (l Layout) Check(ctx context.Context, client rex.Client, e Entry) error {
 	_, err = fmt.Fprintf(probe, `%s It checks one plugin and is deleted right away.
 rexd = { plugins = {} }
 package.path = %s
-rexd.plugin = { id = %s, version = %s, dir = %s }
+rexd.plugin = { id = %s, version = %s, dir = %s, options = %s }
 rexd.plugins[rexd.plugin.id] = rexd.plugin
 require(%s)
-`, generatedHeader, path, luaString(e.ID), luaString(e.Version), luaString(e.Dir), luaString("rexd.plugins."+e.ID))
+`, generatedHeader, path, luaString(e.ID), luaString(e.Version), luaString(e.Dir), luaTable(e.Options), luaString("rexd.plugins."+e.ID))
 	if closeErr := probe.Close(); err == nil {
 		err = closeErr
 	}
@@ -358,6 +362,24 @@ func (l Layout) writeInit(data []byte) error {
 		return err
 	}
 	return fsutil.WriteFileAtomic(target, data, perm)
+}
+
+// luaTable renders options as a Lua table, with its keys in order so the generated
+// file only changes when an option does.
+func luaTable(options map[string]any) string {
+	if len(options) == 0 {
+		return "{}"
+	}
+	keys := slices.Sorted(maps.Keys(options))
+	parts := make([]string, len(keys))
+	for i, key := range keys {
+		value := fmt.Sprint(options[key]) // A number or a boolean.
+		if text, ok := options[key].(string); ok {
+			value = luaString(text)
+		}
+		parts[i] = "[" + luaString(key) + "] = " + value
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
 }
 
 // luaString renders s as a Lua 5.1 string literal.

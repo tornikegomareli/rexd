@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -217,9 +219,14 @@ func (c Client) ReloadConfig(ctx context.Context) error {
 }
 
 // ScriptArgs returns the arguments that run an event script. The script hears
-// every session, including sessions created later.
-func (c Client) ScriptArgs(path string) []string {
-	return c.args("do", path, "--all")
+// every session, including sessions created later, and reads its options from
+// rex.args.
+func (c Client) ScriptArgs(path string, options map[string]any) []string {
+	args := []string{"do", path, "--all"}
+	for _, key := range slices.Sorted(maps.Keys(options)) {
+		args = append(args, fmt.Sprintf("%s=%v", key, options[key]))
+	}
+	return c.args(args...)
 }
 
 // ScriptEnv returns the environment for an event script. Without an app

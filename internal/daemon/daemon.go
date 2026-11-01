@@ -168,6 +168,7 @@ func LoadDesired(dirs paths.Dirs, findRex func() (string, error)) (supervisor.De
 					"REXD_PLUGIN_DIR=" + dir,
 					"REXD_SCRIPT=" + script.Name,
 				},
+				Options:     plugin.Options,
 				LogPath:     dirs.ScriptLog(plugin.ID, script.Name),
 				Fingerprint: fingerprint(current.Settings.Server, plugin, script),
 			})

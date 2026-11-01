@@ -174,7 +174,7 @@ func TestInstallCopy(t *testing.T) {
 	if got := read(t, e.layout.Module("acme.foo")); got != "-- config one" {
 		t.Errorf("module = %q", got)
 	}
-	if !strings.Contains(read(t, e.layout.Index()), `load_plugin("acme.foo", "1.0", "`+e.dirs.Plugin("acme.foo")+`")`) {
+	if !strings.Contains(read(t, e.layout.Index()), `load_plugin("acme.foo", "1.0", "`+e.dirs.Plugin("acme.foo")+`", {})`) {
 		t.Errorf("index:\n%s", read(t, e.layout.Index()))
 	}
 	if saved := e.state().Plugins["acme.foo"]; saved == nil || saved.Source != src {

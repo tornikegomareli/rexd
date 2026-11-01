@@ -62,8 +62,8 @@ func TestIndexListsPluginsInOrder(t *testing.T) {
 	if !strings.HasPrefix(got, generatedHeader) {
 		t.Errorf("no header:\n%s", got)
 	}
-	first := strings.Index(got, `load_plugin("a.one", "1.0", "/p/a.one")`)
-	second := strings.Index(got, `load_plugin("b.two", "2.0", "/Application Support/b \"two\"")`)
+	first := strings.Index(got, `load_plugin("a.one", "1.0", "/p/a.one", {})`)
+	second := strings.Index(got, `load_plugin("b.two", "2.0", "/Application Support/b \"two\"", {})`)
 	if first < 0 || second < first {
 		t.Errorf("plugin lines are wrong:\n%s", got)
 	}
@@ -649,5 +649,18 @@ func TestRexLuaWinsOverLua(t *testing.T) {
 	got := string(Index([]Entry{{ID: "a.b", Version: "1", Dir: dir}}))
 	if !strings.Contains(got, dir+"/rex/lua/?.lua") || strings.Contains(got, dir+"/lua/?.lua") {
 		t.Fatalf("got:\n%s", got)
+	}
+}
+
+func TestIndexPassesOptions(t *testing.T) {
+	got := string(Index([]Entry{{ID: "a.b", Version: "1", Dir: "/nowhere", Options: map[string]any{
+		"key": `ctrl+"x"`, "size": float64(3), "on": true,
+	}}}))
+	want := `load_plugin("a.b", "1", "/nowhere", { ["key"] = "ctrl+\"x\"", ["on"] = true, ["size"] = 3 })`
+	if !strings.Contains(got, want) {
+		t.Fatalf("no %q in:\n%s", want, got)
+	}
+	if strings.Contains(got, "package.path = ") {
+		t.Fatalf("a plugin with no Lua folder changed the path:\n%s", got)
 	}
 }

@@ -41,6 +41,8 @@ type Spec struct {
 	Dir string
 	// Env holds variables added to the script's environment.
 	Env []string
+	// Options reach the script as rex.args.
+	Options map[string]any
 	// LogPath receives the script's output.
 	LogPath string
 	// Fingerprint changes when the script must restart, such as after an update.
@@ -443,7 +445,7 @@ func (s *Supervisor) start(u *unit, session string) {
 	}
 	lines := logfile.NewLineWriter(u.log, time.Now)
 
-	cmd := exec.Command(s.client.Path, s.client.ScriptArgs(spec.Path)...)
+	cmd := exec.Command(s.client.Path, s.client.ScriptArgs(spec.Path, spec.Options)...)
 	cmd.Env = append(s.client.ScriptEnv(session), spec.Env...)
 	cmd.Dir = spec.Dir
 	cmd.Stdout, cmd.Stderr = lines, lines
