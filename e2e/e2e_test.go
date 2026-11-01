@@ -1168,6 +1168,64 @@ end }
 	}
 }
 
+// git runs git in a repository the test owns.
+func (r *rig) git(dir string, args ...string) {
+	r.t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		r.t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// A real Rex runs the locked version after a sync, and a range stays in its range.
+func TestSyncAndARange(t *testing.T) {
+	r := newRig(t)
+	r.setup()
+	r.newSession("first")
+	r.startDaemon()
+	repo := r.plugin(probeID, "e2e_probe", "1.0.0")
+	r.git(repo, "init", "-q", "-b", "main")
+	commit := func(version string) {
+		r.writePlugin(repo, probeID, "e2e_probe", version)
+		r.git(repo, "add", "-A")
+		r.git(repo, "commit", "-qm", version)
+		r.git(repo, "tag", "v"+version)
+	}
+	commit("1.0.0")
+	commit("1.1.0")
+	commit("2.0.0")
+
+	r.mustRexd("install", "file://"+repo, "--ref", "^1.0.0")
+	if out, err := r.runAction("e2e_probe", "first"); err != nil || !strings.Contains(out, "1.1.0") {
+		t.Fatalf("range: %v\n%s", err, out)
+	}
+	lockPath := filepath.Join(filepath.Dir(r.init), "rexd.lock")
+	lock, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	commit("1.2.0")
+	r.mustRexd("update")
+	if out, err := r.runAction("e2e_probe", "first"); err != nil || !strings.Contains(out, "1.2.0") {
+		t.Fatalf("update: %v\n%s", err, out)
+	}
+
+	// Back to what the lock held.
+	if err := os.WriteFile(lockPath, lock, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := r.mustRexd("sync"); !strings.Contains(out, "at 1.1.0") {
+		t.Fatalf("sync output:\n%s", out)
+	}
+	if out, err := r.runAction("e2e_probe", "first"); err != nil || !strings.Contains(out, "1.1.0") {
+		t.Fatalf("after sync: %v\n%s", err, out)
+	}
+	r.waitMarker("started " + probeID + " 1.1.0")
+}
+
 func TestExamplePlugin(t *testing.T) {
 	r := newRig(t)
 	r.fakeOsascript()

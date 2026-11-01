@@ -41,6 +41,8 @@ type Manager struct {
 	Rex rex.Client
 	// Out receives progress for the user.
 	Out io.Writer
+
+	syncing bool // Sync is running, and it leaves rexd.lock alone.
 }
 
 func (m *Manager) printf(format string, args ...any) {
@@ -229,17 +231,26 @@ func (m *Manager) fetch(ctx context.Context, src Source) (work, commit string, c
 func cloneRepo(ctx context.Context, src Source, dir string) (string, error) {
 	ref := src.Ref
 	if isRange(ref) {
-		tag, err := resolveRange(ctx, src.Location, ref)
-		if err != nil {
-			return "", err
+		ref = src.Commit
+		if ref == "" {
+			tag, err := resolveRange(ctx, src.Location, src.Ref)
+			if err != nil {
+				return "", err
+			}
+			ref = tag
 		}
-		ref = tag
 	}
 	if _, err := git(ctx, "", "clone", "--quiet", src.Location, dir); err != nil {
 		return "", err
 	}
 	if ref != "" {
 		if _, err := git(ctx, dir, "checkout", "--quiet", ref); err != nil {
+			return "", err
+		}
+	}
+	// On a branch, this keeps the branch, so the plugin can follow it later.
+	if src.Commit != "" && ref != src.Commit {
+		if _, err := git(ctx, dir, "reset", "--quiet", "--hard", src.Commit); err != nil {
 			return "", err
 		}
 	}
@@ -279,7 +290,24 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 	if err := checkExistingConfig(ctx, client, layout, current); err != nil {
 		return nil, err
 	}
+	plugin, err = m.install(ctx, client, current, layout, src, nil)
+	if err != nil {
+		return nil, err
+	}
+	if fileExists(layout.Module(plugin.ID)) {
+		m.reload(ctx, client)
+	}
+	m.notifyDaemon(hasScripts(m.Dirs.Plugin(plugin.ID)))
+	return plugin, nil
+}
 
+func hasScripts(dir string) bool {
+	man, _, err := manifest.Load(dir)
+	return err == nil && len(man.Scripts) > 0
+}
+
+// install fetches and builds a plugin, then makes it live.
+func (m *Manager) install(ctx context.Context, client rex.Client, current *state.State, layout rexconfig.Layout, src Source, options map[string]any) (plugin *state.Plugin, err error) {
 	work, commit, cleanup, err := m.fetch(ctx, src)
 	if err != nil {
 		return nil, err
@@ -336,6 +364,7 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 		Ref:         src.Ref,
 		Commit:      commit,
 		Main:        man.Main,
+		Options:     options,
 		Generation:  1,
 		InstalledAt: now,
 		UpdatedAt:   now,
@@ -347,6 +376,7 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 		man:     man,
 		dir:     dir,
 		link:    link,
+		options: options,
 		apply:   func() { current.Plugins[man.ID] = plugin },
 		revert:  func() { delete(current.Plugins, man.ID) },
 		configError: func(err error) error {
@@ -356,11 +386,6 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 	if err != nil {
 		return nil, err
 	}
-
-	if man.HasConfig() {
-		m.reload(ctx, client)
-	}
-	m.notifyDaemon(len(man.Scripts) > 0)
 	return plugin, nil
 }
 
@@ -426,7 +451,7 @@ func (m *Manager) activate(ctx context.Context, a activation, undo *undoStack) e
 	if err := a.client.CheckConfig(ctx, a.layout.Init); err != nil {
 		return a.configError(err)
 	}
-	return a.current.Save(m.Dirs.StateFile())
+	return m.save(a.current, a.layout)
 }
 
 // brokenPluginError is a config check that failed inside an installed plugin.
@@ -492,7 +517,7 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	if err := layout.WriteIndex(m.entries(current, layout)); err != nil {
 		return err
 	}
-	if err := current.Save(m.Dirs.StateFile()); err != nil {
+	if err := m.save(current, layout); err != nil {
 		return err
 	}
 	if hadModule {
@@ -567,7 +592,7 @@ func (m *Manager) Update(ctx context.Context, ids []string) ([]UpdateResult, err
 		hasScripts bool
 	)
 	for _, p := range targets {
-		result, man, err := m.updateOne(ctx, client, current, layout, p)
+		result, man, err := m.updateOne(ctx, client, current, layout, p, "")
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", p.ID, err))
 			continue
@@ -587,8 +612,8 @@ func (m *Manager) Update(ctx context.Context, ids []string) ([]UpdateResult, err
 }
 
 // updateOne replaces one plugin, keeping the old version until the new one has
-// been built and has passed Rex's checker.
-func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *state.State, layout rexconfig.Layout, p *state.Plugin) (result UpdateResult, man *manifest.Manifest, err error) {
+// been built and has passed Rex's checker. With a target, it moves to that commit.
+func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *state.State, layout rexconfig.Layout, p *state.Plugin, target string) (result UpdateResult, man *manifest.Manifest, err error) {
 	result = UpdateResult{ID: p.ID, From: p.Version, To: p.Version}
 	dir := m.Dirs.Plugin(p.ID)
 
@@ -604,8 +629,12 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 		work = filepath.Join(staging, "plugin")
 		switch p.Kind {
 		case state.KindGit:
+			if target == p.Commit {
+				result.Note = "already at the locked commit"
+				return result, nil, nil
+			}
 			var note string
-			commit, note, err = m.fetchNewer(ctx, p, dir, work)
+			commit, note, err = m.fetchNewer(ctx, p, dir, work, target)
 			if err != nil {
 				return result, nil, err
 			}
@@ -685,18 +714,26 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 
 // fetchNewer clones what the plugin should move to into work, which is a fresh folder
 // because the installed one holds what the build left. A note says why it stays.
-func (m *Manager) fetchNewer(ctx context.Context, p *state.Plugin, dir, work string) (commit, note string, err error) {
-	ref := p.Ref
-	if !isRange(ref) {
-		ref, err = git(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+func (m *Manager) fetchNewer(ctx context.Context, p *state.Plugin, dir, work, target string) (commit, note string, err error) {
+	switch {
+	case target != "":
+		commit, err = cloneRepo(ctx, Source{Location: p.Source, Ref: p.Ref, Commit: target}, work)
+		return commit, "", err
+	case isRange(p.Ref):
+		commit, err = cloneRepo(ctx, Source{Location: p.Source, Ref: p.Ref}, work)
+	default:
+		branch, err := git(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
 		if err != nil {
 			return "", "", err
 		}
-		if ref == "HEAD" { // Git's answer when no branch is checked out.
+		if branch == "HEAD" { // Git's answer when no branch is checked out.
 			return "", "pinned to " + p.Ref + "; remove and install it to change that", nil
 		}
+		commit, err = cloneRepo(ctx, Source{Location: p.Source, Ref: branch}, work)
+		if err != nil {
+			return "", "", err
+		}
 	}
-	commit, err = cloneRepo(ctx, Source{Location: p.Source, Ref: ref}, work)
 	if err != nil {
 		return "", "", err
 	}

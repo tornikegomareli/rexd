@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -166,6 +167,11 @@ func (m *Manager) Teardown(ctx context.Context, opts TeardownOptions) error {
 		}
 	}
 	if opts.Purge {
+		if path := current.Settings.RexConfig; path != "" {
+			if err := os.Remove((rexconfig.Layout{Init: path}).Lock()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
 		if err := os.RemoveAll(m.Dirs.Data); err != nil {
 			return err
 		}

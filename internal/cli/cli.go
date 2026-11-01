@@ -140,6 +140,16 @@ key=. Rex's checker reads the plugin with the new options, and a failure changes
 nothing. The plugin's README says which options it has.`,
 			run: runSet,
 		},
+		{
+			name: "sync", args: "",
+			summary: "Make the plugins match rexd.lock",
+			help: `
+rexd.lock sits beside Rex's init.lua. rexd writes it on every change, and it lists
+each plugin from git with its commit and options. On another machine, this installs
+what is missing, moves the others to their commits, and sets their options. It
+removes nothing.`,
+			run: runSync,
+		},
 		{name: "list", args: "[--json]", summary: "List installed plugins", run: runList},
 		{name: "status", args: "[--json]", summary: "Show the daemon, plugins and event scripts", run: runStatus},
 		{

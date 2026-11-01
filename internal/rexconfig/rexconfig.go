@@ -50,6 +50,13 @@ func (l Layout) Index() string { return filepath.Join(l.Dir(), "rexd.lua") }
 // ModuleRoot is the folder that holds the plugins' config code.
 func (l Layout) ModuleRoot() string { return filepath.Join(l.Dir(), "rexd") }
 
+// Lock is the file that lists the plugins from git, for another machine. It sits
+// beside init.lua, so a dotfiles repository that holds one holds the other.
+func (l Layout) Lock() string { return filepath.Join(l.Dir(), "rexd.lock") }
+
+// WriteLock replaces the lock's content, through a link if it is one.
+func (l Layout) WriteLock(data []byte) error { return writeThrough(l.Lock(), data) }
+
 // Module is the file that holds the config code of the plugin with this id. The
 // dots in an id become folders, the same way Lua's require reads a module name.
 func (l Layout) Module(id string) string {
@@ -358,9 +365,11 @@ func (l Layout) restoreInit(original []byte, existed bool) error {
 // writeInit replaces init.lua's content. The write goes through a symbolic link:
 // people keep the file in a dotfiles repository, and renaming over the link would
 // silently detach Rex's config from it.
-func (l Layout) writeInit(data []byte) error {
-	target := l.Init
-	if resolved, err := filepath.EvalSymlinks(l.Init); err == nil {
+func (l Layout) writeInit(data []byte) error { return writeThrough(l.Init, data) }
+
+func writeThrough(path string, data []byte) error {
+	target := path
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		target = resolved
 	}
 	perm := fs.FileMode(0o644)

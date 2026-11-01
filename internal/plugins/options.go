@@ -7,7 +7,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/tornikegomareli/rexd/internal/rexconfig"
+	"github.com/tornikegomareli/rexd/internal/state"
 )
 
 var optionKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -50,8 +52,20 @@ func (m *Manager) SetOptions(ctx context.Context, id string, changes map[string]
 	if !ok {
 		return fmt.Errorf("%s is not installed", id)
 	}
-	client := m.client(current)
+	if err := m.applyOptions(ctx, current, layout, p, changes); err != nil {
+		return err
+	}
+	if fileExists(layout.Module(id)) {
+		m.reload(ctx, m.client(current))
+	}
+	m.notifyDaemon(false)
+	return nil
+}
 
+// applyOptions changes the options in the state and in rexd.lua, and does nothing if
+// Rex's checker refuses them.
+func (m *Manager) applyOptions(ctx context.Context, current *state.State, layout rexconfig.Layout, p *state.Plugin, changes map[string]any) error {
+	client := m.client(current)
 	next := *p
 	next.Options = map[string]any{}
 	maps.Copy(next.Options, p.Options)
@@ -62,12 +76,10 @@ func (m *Manager) SetOptions(ctx context.Context, id string, changes map[string]
 			next.Options[key] = value
 		}
 	}
-	next.Generation++
-	next.UpdatedAt = time.Now()
+	touch(&next)
 
-	has, err := m.CheckConfigCode(ctx, current, &next)
-	if err != nil {
-		return pluginOptionsError(id, err)
+	if _, err := m.CheckConfigCode(ctx, current, &next); err != nil {
+		return pluginOptionsError(p.ID, err)
 	}
 	previous := *p
 	*p = next
@@ -79,16 +91,9 @@ func (m *Manager) SetOptions(ctx context.Context, id string, changes map[string]
 		if undoErr := layout.WriteIndex(m.entries(current, layout)); undoErr != nil {
 			m.printf("warning: could not undo a step: %v", undoErr)
 		}
-		return pluginOptionsError(id, err)
+		return pluginOptionsError(p.ID, err)
 	}
-	if err := current.Save(m.Dirs.StateFile()); err != nil {
-		return err
-	}
-	if has {
-		m.reload(ctx, client)
-	}
-	m.notifyDaemon(false)
-	return nil
+	return m.save(current, layout)
 }
 
 func pluginOptionsError(id string, err error) error {

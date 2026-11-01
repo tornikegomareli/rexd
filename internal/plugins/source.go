@@ -25,6 +25,8 @@ type Source struct {
 	Location string
 	// Ref is a branch, tag, commit or version range. Only git sources have one.
 	Ref string
+	// Commit overrides where Ref ends up, when rexd.lock says where a plugin was.
+	Commit string
 }
 
 // ParseSource reads what the user typed: owner/repo, owner/repo@ref, a git URL,

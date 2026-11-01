@@ -132,6 +132,25 @@ func runUpdate(ctx context.Context, a *app, args []string) error {
 	return err
 }
 
+func runSync(ctx context.Context, a *app, args []string) error {
+	fs := a.flags("sync")
+	if err := a.parse(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return usagef("takes no arguments")
+	}
+	m, err := a.manager()
+	if err != nil {
+		return err
+	}
+	results, err := m.Sync(ctx)
+	for _, r := range results {
+		fmt.Fprintf(a.stdout, "%s: %s\n", r.ID, r.Note)
+	}
+	return err
+}
+
 func runSet(ctx context.Context, a *app, args []string) error {
 	fs := a.flags("set")
 	if err := a.parse(fs, args); err != nil {
