@@ -61,6 +61,20 @@ type Entry struct {
 	Dir     string
 }
 
+// luaPath renders the Lua expression that adds the plugin's Lua folder to
+// package.path, so the plugin can require its other files. Its Lua folder is rex/lua
+// if it has one. Otherwise it is lua, unless that holds code for another program, in
+// which case the plugin has a rex/lua. The result is empty with neither.
+func (e Entry) luaPath() string {
+	for _, sub := range []string{"rex/lua", "lua"} {
+		root := filepath.Join(e.Dir, filepath.FromSlash(sub))
+		if info, err := os.Stat(root); err == nil && info.IsDir() {
+			return luaString(root+"/?.lua;"+root+"/?/init.lua;") + " .. package.path"
+		}
+	}
+	return ""
+}
+
 // Index renders rexd.lua. It wraps each plugin in pcall, so a plugin that breaks
 // later cannot take the user's own bindings down with it. Rex keeps a file's
 // earlier result if the whole file fails to load, which would also freeze every
@@ -83,6 +97,9 @@ end
 
 `)
 	for _, e := range entries {
+		if path := e.luaPath(); path != "" {
+			fmt.Fprintf(&b, "package.path = %s\n", path)
+		}
 		fmt.Fprintf(&b, "load_plugin(%s, %s, %s)\n", luaString(e.ID), luaString(e.Version), luaString(e.Dir))
 	}
 	return b.Bytes()
@@ -161,12 +178,17 @@ func (l Layout) Check(ctx context.Context, client rex.Client, e Entry) error {
 		return err
 	}
 	defer os.Remove(probe.Name())
+	path := "package.path"
+	if found := e.luaPath(); found != "" {
+		path = found
+	}
 	_, err = fmt.Fprintf(probe, `%s It checks one plugin and is deleted right away.
 rexd = { plugins = {} }
+package.path = %s
 rexd.plugin = { id = %s, version = %s, dir = %s }
 rexd.plugins[rexd.plugin.id] = rexd.plugin
 require(%s)
-`, generatedHeader, luaString(e.ID), luaString(e.Version), luaString(e.Dir), luaString("rexd.plugins."+e.ID))
+`, generatedHeader, path, luaString(e.ID), luaString(e.Version), luaString(e.Dir), luaString("rexd.plugins."+e.ID))
 	if closeErr := probe.Close(); err == nil {
 		err = closeErr
 	}

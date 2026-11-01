@@ -626,3 +626,28 @@ func TestRemoveRequireWithoutTheLine(t *testing.T) {
 		t.Fatalf("init.lua = %q", got)
 	}
 }
+
+func TestIndexMakesAPluginsLuaFilesFindable(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "lua"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := string(Index([]Entry{{ID: "a.b", Version: "1", Dir: dir}}))
+	want := `package.path = "` + dir + `/lua/?.lua;` + dir + `/lua/?/init.lua;" .. package.path`
+	if !strings.Contains(got, want) {
+		t.Fatalf("no %q in:\n%s", want, got)
+	}
+}
+
+func TestRexLuaWinsOverLua(t *testing.T) {
+	dir := t.TempDir()
+	for _, sub := range []string{"lua", "rex/lua"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := string(Index([]Entry{{ID: "a.b", Version: "1", Dir: dir}}))
+	if !strings.Contains(got, dir+"/rex/lua/?.lua") || strings.Contains(got, dir+"/lua/?.lua") {
+		t.Fatalf("got:\n%s", got)
+	}
+}
