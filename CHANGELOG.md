@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Install a repository with no manifest, if it holds a Lua module with a `setup` function. Amber plugins use this format.
 - A plugin's config code can `require` other Lua files, from its `rex/lua` or `lua` folder.
