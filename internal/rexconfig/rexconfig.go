@@ -142,6 +142,16 @@ func (l Layout) InstallModule(id, source string, link bool) error {
 	return fsutil.CopyFileAtomic(source, target)
 }
 
+// WriteStarter writes the config code of a plugin with no manifest. It starts the
+// plugin's Lua module.
+func (l Layout) WriteStarter(id, main string) error {
+	code := fmt.Sprintf("%s It starts %s.\nrequire(%s).setup(rexd.plugin.options)\n", generatedHeader, id, luaString(main))
+	if err := os.MkdirAll(filepath.Dir(l.Module(id)), 0o755); err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomic(l.Module(id), []byte(code), 0o644)
+}
+
 // RemoveModule deletes a plugin's config code and the folders that leaves empty.
 func (l Layout) RemoveModule(id string) error {
 	target := l.Module(id)

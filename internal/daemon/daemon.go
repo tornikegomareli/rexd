@@ -150,6 +150,9 @@ func LoadDesired(dirs paths.Dirs, findRex func() (string, error)) (supervisor.De
 		PluginErrors: map[string]string{},
 	}
 	for _, plugin := range current.SortedPlugins() {
+		if plugin.Main != "" {
+			continue // It has no manifest, and only a manifest names event scripts.
+		}
 		dir := dirs.Plugin(plugin.ID)
 		m, _, err := manifest.Load(dir)
 		if err != nil {

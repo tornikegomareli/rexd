@@ -112,10 +112,13 @@ func resolveConfigPath(ctx context.Context, client rex.Client, flag, saved strin
 func (m *Manager) restoreModules(current *state.State, layout rexconfig.Layout, undo *undoStack) error {
 	for _, p := range current.SortedPlugins() {
 		dir := m.Dirs.Plugin(p.ID)
-		man, _, err := manifest.Load(dir)
-		if err != nil {
-			m.printf("warning: skipping %s: %v", p.ID, err)
-			continue
+		man := &manifest.Manifest{ID: p.ID, Main: p.Main}
+		if p.Main == "" {
+			var err error
+			if man, _, err = manifest.Load(dir); err != nil {
+				m.printf("warning: skipping %s: %v", p.ID, err)
+				continue
+			}
 		}
 		restore, err := m.replaceModule(layout, man, dir, p.Kind == state.KindLink)
 		if err != nil {

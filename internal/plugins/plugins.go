@@ -279,12 +279,9 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 	defer cleanup()
 
 	// The working copy has a temporary name, so errors name the source.
-	man, warnings, err := manifest.Load(work)
+	man, err := m.describe(work, src.Location, commit)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", src.Location, err)
-	}
-	for _, warning := range warnings {
-		m.printf("warning: %s", warning)
 	}
 	if _, exists := current.Plugins[man.ID]; exists {
 		return nil, fmt.Errorf(`%s is already installed; use "rexd update %s", or remove it first`, man.ID, man.ID)
@@ -330,6 +327,7 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 		Source:      src.Location,
 		Ref:         src.Ref,
 		Commit:      commit,
+		Main:        man.Main,
 		Generation:  1,
 		InstalledAt: now,
 		UpdatedAt:   now,
@@ -351,11 +349,26 @@ func (m *Manager) Install(ctx context.Context, src Source) (plugin *state.Plugin
 		return nil, err
 	}
 
-	if man.Config != "" {
+	if man.HasConfig() {
 		m.reload(ctx, client)
 	}
 	m.notifyDaemon(len(man.Scripts) > 0)
 	return plugin, nil
+}
+
+// describe reads a plugin's manifest. A plugin with none can still be a Lua module.
+func (m *Manager) describe(dir, location, commit string) (*manifest.Manifest, error) {
+	man, warnings, err := manifest.Load(dir)
+	if errors.Is(err, manifest.ErrNotAPlugin) {
+		return manifest.Adopt(dir, location, commit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, warning := range warnings {
+		m.printf("warning: %s", warning)
+	}
+	return man, nil
 }
 
 // activation is one version of a plugin to make live, in a folder that is already
@@ -391,7 +404,7 @@ func (m *Manager) activate(ctx context.Context, a activation, undo *undoStack) e
 		}
 		return a.layout.WriteIndex(m.entries(a.current, a.layout))
 	})
-	if a.man.Config != "" {
+	if a.man.HasConfig() {
 		m.printf("Checking the plugin's config")
 		entry := rexconfig.Entry{ID: a.man.ID, Version: a.man.Version, Dir: a.dir, Options: a.options}
 		if err := a.layout.Check(ctx, a.client, entry); err != nil {
@@ -613,12 +626,9 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 	}
 
 	m.printf("Updating %s", p.ID)
-	man, warnings, err := manifest.Load(work)
+	man, err = m.describe(work, p.Source, commit)
 	if err != nil {
 		return result, nil, err
-	}
-	for _, warning := range warnings {
-		m.printf("warning: %s", warning)
 	}
 	if man.ID != p.ID {
 		return result, nil, fmt.Errorf("its id changed to %s; remove it and install the new one", man.ID)
@@ -661,6 +671,7 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 		apply: func() {
 			p.Version = man.Version
 			p.Commit = commit
+			p.Main = man.Main
 			p.Generation++
 			p.UpdatedAt = time.Now()
 		},
@@ -703,6 +714,9 @@ func (m *Manager) replaceModule(layout rexconfig.Layout, man *manifest.Manifest,
 			return nil, err
 		}
 		restore = func() error { return fsutil.WriteFileAtomic(target, data, info.Mode().Perm()) }
+	}
+	if man.Main != "" {
+		return restore, layout.WriteStarter(man.ID, man.Main)
 	}
 	if man.Config == "" {
 		if err := layout.RemoveModule(man.ID); err != nil {

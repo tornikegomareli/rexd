@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -186,5 +187,82 @@ func TestValidationReportsEveryProblem(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("%q missing from: %v", want, err)
 		}
+	}
+}
+
+func writeTree(t *testing.T, files ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("return {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestAdoptFindsTheOnlyModule(t *testing.T) {
+	dir := writeTree(t, "lua/smart-splits-rex/init.lua", "lua/smart-splits-rex/move.lua")
+	m, err := Adopt(dir, "https://github.com/Rawnly/Smart_Splits.rex.git", "abcdef1234567")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != "rawnly.smart-splits" || m.Main != "smart-splits-rex" || m.Version != "abcdef1" || m.Name != "Smart_Splits.rex" {
+		t.Fatalf("%+v", m)
+	}
+	if !m.HasConfig() {
+		t.Error("an adopted plugin has config code")
+	}
+}
+
+func TestAdoptPrefersRexLua(t *testing.T) {
+	dir := writeTree(t, "lua/for-neovim/init.lua", "rex/lua/for-rex.lua")
+	m, err := Adopt(dir, "git@github.com:acme/thing.git", "abcdef1234567")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != "acme.thing" || m.Main != "for-rex" {
+		t.Fatalf("%+v", m)
+	}
+}
+
+func TestAdoptChoosesTheModuleNamedAfterTheRepo(t *testing.T) {
+	dir := writeTree(t, "lua/thing/init.lua", "lua/other.lua")
+	m, err := Adopt(dir, "https://example.com/acme/thing.rex", "abcdef1234567")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Main != "thing" {
+		t.Fatalf("%+v", m)
+	}
+}
+
+func TestAdoptALocalFolder(t *testing.T) {
+	dir := writeTree(t, "lua/thing.lua")
+	m, err := Adopt(dir, "/Users/me/My Plugin", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != "local.my-plugin" || m.Version != "local" {
+		t.Fatalf("%+v", m)
+	}
+}
+
+func TestAdoptRefusesWhatIsNoPlugin(t *testing.T) {
+	for name, dir := range map[string]string{
+		"no Lua folder": writeTree(t, "README.md"),
+		"empty folder":  writeTree(t, "lua/notes.txt"),
+	} {
+		if _, err := Adopt(dir, "https://github.com/a/b", "abcdef1"); !errors.Is(err, ErrNotAPlugin) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	dir := writeTree(t, "lua/one.lua", "lua/two.lua")
+	if _, err := Adopt(dir, "https://github.com/a/b", "abcdef1"); err == nil || !strings.Contains(err.Error(), "one, two") {
+		t.Errorf("several modules: %v", err)
 	}
 }

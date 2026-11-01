@@ -1116,6 +1116,58 @@ rex.on("session_created", function() end)
 	r.waitMarker("script color red")
 }
 
+// A real Rex starts a plugin that has no manifest, with its options.
+func TestPluginWithNoManifest(t *testing.T) {
+	r := newRig(t)
+	r.setup()
+	r.newSession("first")
+	r.startDaemon()
+	dir := filepath.Join(r.root, "lua-thing")
+	for name, content := range map[string]string{
+		"lua/lua-thing/init.lua": `local word = require("lua-thing.word")
+return { setup = function(opts)
+  rex.action{ name = "lua_thing", title = "Thing", run = function() return word .. " " .. tostring(opts.color) end }
+end }
+`,
+		"lua/lua-thing/word.lua": `return "started"`,
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if out := r.mustRexd("install", dir); !strings.Contains(out, "Installed local.lua-thing") {
+		t.Fatalf("install output:\n%s", out)
+	}
+	if out, err := r.runAction("lua_thing", "first"); err != nil || !strings.Contains(out, "started nil") {
+		t.Fatalf("action: %v\n%s", err, out)
+	}
+	r.mustRexd("set", "local.lua-thing", "color=red")
+	if out, err := r.runAction("lua_thing", "first"); err != nil || !strings.Contains(out, "started red") {
+		t.Fatalf("action with an option: %v\n%s", err, out)
+	}
+	if out := r.mustRexd("status"); !strings.Contains(out, "local.lua-thing") || !strings.Contains(out, "loaded") {
+		t.Fatalf("status:\n%s", out)
+	}
+	if out, code := r.rexd("logs", "local.lua-thing"); code == 0 || !strings.Contains(out, "no event scripts") {
+		t.Errorf("logs, status %d:\n%s", code, out)
+	}
+
+	// A broken module is refused, and the plugin before it keeps working.
+	if err := os.WriteFile(filepath.Join(dir, "lua/lua-thing/word.lua"), []byte("return ("), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := r.rexd("update", "local.lua-thing"); code == 0 || !strings.Contains(out, "the old version stays") {
+		t.Fatalf("update, status %d:\n%s", code, out)
+	}
+	if out, err := r.runAction("lua_thing", "first"); err != nil || !strings.Contains(out, "started red") {
+		t.Fatalf("after a broken update: %v\n%s", err, out)
+	}
+}
+
 func TestExamplePlugin(t *testing.T) {
 	r := newRig(t)
 	r.fakeOsascript()

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -18,7 +19,7 @@ const FileName = "rex-plugin.toml"
 const maxIDLength = 64
 
 // ErrNotAPlugin means a folder has no manifest.
-var ErrNotAPlugin = errors.New("no " + FileName + " found, so this is not a rexd plugin")
+var ErrNotAPlugin = errors.New("no " + FileName + " and no Lua module found, so this is not a rexd plugin")
 
 var (
 	// An id is at least two dot-separated segments, such as "acme.bell-notify".
@@ -26,6 +27,7 @@ var (
 	idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$`)
 	// A script name becomes a file name and appears in status output.
 	scriptNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	notInID           = regexp.MustCompile(`[^a-z0-9-]+`)
 )
 
 // Manifest describes a plugin.
@@ -51,6 +53,78 @@ type Manifest struct {
 	Scripts []Script `toml:"scripts"`
 	// Build lists commands to run in the plugin's folder on install and update.
 	Build []Build `toml:"build"`
+	// Main is the Lua module to start, for a plugin with no manifest. See Adopt.
+	Main string `toml:"-"`
+}
+
+// HasConfig says if the plugin loads code into Rex's config.
+func (m *Manifest) HasConfig() bool {
+	return m.Config != "" || m.Main != ""
+}
+
+// Adopt describes a plugin with no manifest: a Lua module with a setup function, in
+// rex/lua or lua. This is the format Amber installs. The id comes from where the
+// plugin comes from, and commit is its version.
+func Adopt(dir, location, commit string) (*Manifest, error) {
+	owner, repo := sourceName(location)
+	modules := luaModules(dir)
+	if len(modules) == 0 {
+		return nil, ErrNotAPlugin
+	}
+	name := strings.TrimSuffix(repo, ".rex")
+	main := modules[0]
+	if len(modules) > 1 {
+		if !slices.Contains(modules, name) {
+			return nil, fmt.Errorf("it has several Lua modules (%s) and none is named %s, so rexd cannot tell which one to start; add a %s", strings.Join(modules, ", "), name, FileName)
+		}
+		main = name
+	}
+	version := "local"
+	if commit != "" {
+		version = commit[:min(len(commit), 7)]
+	}
+	return &Manifest{ID: idPart(owner) + "." + idPart(name), Name: repo, Version: version, Main: main}, nil
+}
+
+// sourceName finds the owner and the repository in a clone URL. A local folder has
+// the owner "local".
+func sourceName(location string) (owner, repo string) {
+	parts := strings.FieldsFunc(strings.TrimSuffix(strings.TrimRight(location, "/"), ".git"), func(r rune) bool {
+		return r == '/' || r == ':'
+	})
+	repo = parts[len(parts)-1]
+	if strings.HasPrefix(location, "/") || len(parts) < 2 {
+		return "local", repo
+	}
+	return parts[len(parts)-2], repo
+}
+
+func idPart(name string) string {
+	return strings.Trim(notInID.ReplaceAllString(strings.ToLower(name), "-"), "-")
+}
+
+// luaModules lists what require can find in a plugin's Lua folder, in order.
+func luaModules(dir string) []string {
+	for _, sub := range []string{"rex/lua", "lua"} {
+		entries, err := os.ReadDir(filepath.Join(dir, filepath.FromSlash(sub)))
+		if err != nil {
+			continue
+		}
+		var modules []string
+		for _, entry := range entries {
+			name := entry.Name()
+			switch {
+			case entry.IsDir():
+				if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(sub), name, "init.lua")); err == nil {
+					modules = append(modules, name)
+				}
+			case filepath.Ext(name) == ".lua":
+				modules = append(modules, strings.TrimSuffix(name, ".lua"))
+			}
+		}
+		return modules
+	}
+	return nil
 }
 
 // Script is an event script that the daemon keeps running.

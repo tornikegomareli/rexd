@@ -74,8 +74,12 @@ func logFiles(dirs paths.Dirs, args []string, script string, daemonLog bool) ([]
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := current.Plugins[id]; !ok {
+	plugin, ok := current.Plugins[id]
+	if !ok {
 		return nil, fmt.Errorf("%s is not installed", id)
+	}
+	if plugin.Main != "" {
+		return nil, fmt.Errorf("%s has no event scripts, so it has no logs", id)
 	}
 	man, _, err := manifest.Load(dirs.Plugin(id))
 	if err != nil {
