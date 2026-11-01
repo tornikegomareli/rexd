@@ -23,3 +23,7 @@ jobs:
         run: make test
       - name: Build
         run: make build
+      - name: Test the menu bar app
+        if: runner.os == 'macOS'
+        working-directory: macos
+        run: swift test
