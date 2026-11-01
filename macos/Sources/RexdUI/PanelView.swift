@@ -447,7 +447,7 @@ private struct MoreMenu: View {
 
     var body: some View {
         Menu {
-            if model.lockPath != nil {
+            if model.canSync {
                 Button("Sync with rexd.lock") { Task { await model.sync() } }
             }
             Button("Restart Daemon") { Task { await model.restartDaemon() } }

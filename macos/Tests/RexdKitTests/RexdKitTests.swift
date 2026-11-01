@@ -312,6 +312,19 @@ extension RexdKitTests {
         #expect(fake.calls.count == 1)
     }
 
+    /// The menu redraws when this changes, so it must be stored, and read on each refresh.
+    @Test func syncAppearsOnceThereIsALock() async throws {
+        let folder = try temporaryFolder()
+        let config = folder.appendingPathComponent("init.lua").path
+        let fake = try FakeRexd(status: #"{"daemon":{"running":true},"rex":"","rex_config":"\#(config)","plugins":[]}"#)
+        let model = fake.model()
+        await model.refresh()
+        #expect(!model.canSync)
+        try "{}".write(to: folder.appendingPathComponent("rexd.lock"), atomically: true, encoding: .utf8)
+        await model.refresh()
+        #expect(model.canSync)
+    }
+
     @Test func whatFailsComesFirst() async throws {
         let status = #"{"daemon":{"running":true},"rex":"up","rex_config":"/x/init.lua","plugins":["# + [
             ("a.calm", "running"), ("b.loop", "backoff"), ("c.bad", "crashing"), ("d.wait", "waiting"),

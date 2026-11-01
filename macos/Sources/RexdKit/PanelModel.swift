@@ -28,6 +28,8 @@ public final class PanelModel {
     public private(set) var rexState = ""
     public private(set) var rexConfig: String?
     public private(set) var version = ""
+    /// `rexd sync` needs `rexd.lock`, which sits beside `init.lua`.
+    public private(set) var canSync = false
     /// What a command in progress is called.
     public private(set) var task: String?
     /// What the command in progress or the failed command printed.
@@ -62,13 +64,6 @@ public final class PanelModel {
 
     public func plugin(_ id: String) -> Plugin? { plugins.first { $0.id == id } }
 
-    /// `rexd sync` needs `rexd.lock`, which sits beside `init.lua`.
-    public var lockPath: String? {
-        guard let rexConfig, !rexConfig.isEmpty else { return nil }
-        let path = URL(fileURLWithPath: rexConfig).deletingLastPathComponent().appendingPathComponent("rexd.lock").path
-        return FileManager.default.fileExists(atPath: path) ? path : nil
-    }
-
     public func refresh() async {
         if client == nil { client = await locate() }
         guard let client else {
@@ -88,6 +83,10 @@ public final class PanelModel {
             daemon = current.daemon
             rexState = current.rex
             rexConfig = current.rexConfig
+            canSync = current.rexConfig.map {
+                let folder = URL(fileURLWithPath: $0).deletingLastPathComponent()
+                return !$0.isEmpty && FileManager.default.fileExists(atPath: folder.appendingPathComponent("rexd.lock").path)
+            } ?? false
             phase = current.isConnected ? .ready : .notConnected
             readError = nil
             if version.isEmpty { version = (try? await client.version()) ?? "" }
