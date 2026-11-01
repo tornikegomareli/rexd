@@ -150,3 +150,42 @@ public struct Plugin: Identifiable, Sendable, Equatable {
 
     private var restarts: Int { scripts.reduce(0) { $0 + $1.restarts } }
 }
+
+/// One line on what `rexd update` did: only what changed, or that nothing had to.
+public enum UpdateSummary {
+    public static func text(_ printed: [String], ids: [String]) -> String {
+        let updated = printed.compactMap(parse)
+        switch updated.count {
+        case 0:
+            guard let id = ids.first else { return "All plugins are up to date" }
+            let name = shortName(id)
+            if let line = printed.first(where: { $0.hasPrefix("\(id): pinned to ") }) {
+                let pinned = line.dropFirst("\(id): pinned to ".count)
+                return "\(name) is pinned to \(pinned.prefix { $0 != ";" })"
+            }
+            return "\(name) is up to date"
+        case 1:
+            let only = updated[0]
+            return only.version.map { "Updated \(only.name) to \($0)" } ?? "Updated \(only.name)"
+        case 2:
+            return "Updated \(updated[0].name) and \(updated[1].name)"
+        default:
+            return "Updated \(updated.count) plugins: \(updated.map(\.name).joined(separator: ", "))"
+        }
+    }
+
+    /// Reads `Updated acme.foo: 1.0 -> 2.0`, or `Updated acme.foo: new code, still 1.0`.
+    private static func parse(_ line: String) -> (name: String, version: String?)? {
+        guard line.hasPrefix("Updated "), let colon = line.firstIndex(of: ":") else { return nil }
+        let id = line[line.index(line.startIndex, offsetBy: "Updated ".count)..<colon]
+        let change = line[line.index(after: colon)...].components(separatedBy: " -> ")
+        let version = change.count == 2 ? change[1].trimmingCharacters(in: .whitespaces) : nil
+        // A rexd before 0.3.2 prints this when the version stayed the same.
+        let moved = change.count == 2 && change[0].trimmingCharacters(in: .whitespaces) != version
+        return (shortName(String(id)), moved ? version : nil)
+    }
+
+    private static func shortName(_ id: String) -> String {
+        id.split(separator: ".").last.map(String.init) ?? id
+    }
+}

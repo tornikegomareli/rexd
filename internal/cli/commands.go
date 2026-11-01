@@ -120,7 +120,9 @@ func runUpdate(ctx context.Context, a *app, args []string) error {
 	}
 	results, err := m.Update(ctx, fs.Args())
 	for _, r := range results {
-		if r.Changed {
+		if r.Changed && r.From == r.To {
+			fmt.Fprintf(a.stdout, "Updated %s: new code, still %s\n", r.ID, r.To)
+		} else if r.Changed {
 			fmt.Fprintf(a.stdout, "Updated %s: %s -> %s\n", r.ID, r.From, r.To)
 		} else {
 			fmt.Fprintf(a.stdout, "%s: %s\n", r.ID, r.Note)

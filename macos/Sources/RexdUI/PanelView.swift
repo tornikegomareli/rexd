@@ -470,7 +470,9 @@ private struct MoreMenu: View {
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        // A borderless menu draws its label faintly in a menu bar panel, whatever color it has.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("More")

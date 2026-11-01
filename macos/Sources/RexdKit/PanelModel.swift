@@ -131,7 +131,9 @@ public final class PanelModel {
     }
 
     public func update(ids: [String] = []) async {
-        await run(.update(ids: ids), title: ids.isEmpty ? "Updating plugins" : "Updating \(ids[0])")
+        await run(.update(ids: ids), title: ids.isEmpty ? "Updating plugins" : "Updating \(ids[0])") {
+            UpdateSummary.text($0, ids: ids)
+        }
     }
 
     public func sync() async { await run(.sync, title: "Syncing with rexd.lock") }
@@ -154,7 +156,7 @@ public final class PanelModel {
     }
 
     @discardableResult
-    private func run(_ command: RexdCommand, title: String, done: String? = nil) async -> Bool {
+    private func run(_ command: RexdCommand, title: String, done: String? = nil, summary: (([String]) -> String)? = nil) async -> Bool {
         guard !isBusy else { return false }
         if client == nil { client = await locate() }
         guard let client else {
@@ -169,7 +171,7 @@ public final class PanelModel {
             for try await line in client.perform(command) {
                 output.append(line)
             }
-            show(notice: done ?? output.last ?? "Done")
+            show(notice: summary?(output) ?? done ?? output.last ?? "Done")
             output = []
             await refresh()
             return true

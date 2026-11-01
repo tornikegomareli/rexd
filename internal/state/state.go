@@ -55,6 +55,9 @@ type Plugin struct {
 	Ref string `json:"ref,omitempty"`
 	// Commit is the checked out commit of a git plugin.
 	Commit string `json:"commit,omitempty"`
+	// SourceHash is what a local folder held at the last install or update. A folder has no
+	// commit, so this says if it changed.
+	SourceHash string `json:"source_hash,omitempty"`
 	// Main is the Lua module to start, for a plugin with no manifest.
 	Main string `json:"main,omitempty"`
 	// Options are the values set with rexd set: strings, numbers and booleans.

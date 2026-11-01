@@ -139,3 +139,54 @@ func mustWrite(t *testing.T, path, content string, perm os.FileMode) {
 		t.Fatal(err)
 	}
 }
+
+func TestHashDirSeesContentNamesAndModes(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string, mode os.FileMode) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hash := func() string {
+		t.Helper()
+		got, err := HashDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	write("a/b.txt", "one", 0o644)
+	first := hash()
+	if hash() != first {
+		t.Fatal("the same folder has two hashes")
+	}
+	write("a/b.txt", "two", 0o644)
+	second := hash()
+	if second == first {
+		t.Error("new content has the same hash")
+	}
+	write("a/b.txt", "two", 0o755)
+	if hash() == second {
+		t.Error("a new mode has the same hash")
+	}
+	write("a/b.txt", "two", 0o644)
+	if err := os.Rename(filepath.Join(dir, "a/b.txt"), filepath.Join(dir, "a/c.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if hash() == second {
+		t.Error("a new name has the same hash")
+	}
+	before := hash()
+	write(".git/HEAD", "ref", 0o644)
+	if hash() != before {
+		t.Error(".git changed the hash")
+	}
+}

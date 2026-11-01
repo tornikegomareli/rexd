@@ -328,6 +328,12 @@ func (m *Manager) install(ctx context.Context, client rex.Client, current *state
 	if err := m.build(ctx, man, work); err != nil {
 		return nil, err
 	}
+	sourceHash := ""
+	if src.Kind != state.KindGit {
+		if sourceHash, err = fsutil.HashDir(src.Location); err != nil {
+			return nil, err
+		}
+	}
 
 	var undo undoStack
 	defer func() {
@@ -364,6 +370,7 @@ func (m *Manager) install(ctx context.Context, client rex.Client, current *state
 		Ref:         src.Ref,
 		Commit:      commit,
 		Main:        man.Main,
+		SourceHash:  sourceHash,
 		Options:     options,
 		Generation:  1,
 		InstalledAt: now,
@@ -620,6 +627,16 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 	work := dir // A linked plugin updates in place.
 	commit := p.Commit
 	link := p.Kind == state.KindLink
+	if p.Kind != state.KindGit {
+		hash, err := fsutil.HashDir(p.Source)
+		if err != nil {
+			return result, nil, fmt.Errorf("reading %s: %w", p.Source, err)
+		}
+		if hash == p.SourceHash {
+			result.Note = "already up to date"
+			return result, nil, nil
+		}
+	}
 	if !link {
 		staging, cleanup, err := m.stagingDir("update-*")
 		if err != nil {
@@ -665,6 +682,13 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 	if err := m.build(ctx, man, work); err != nil {
 		return result, nil, err
 	}
+	// After the build, because a linked folder holds what the build left.
+	sourceHash := ""
+	if p.Kind != state.KindGit {
+		if sourceHash, err = fsutil.HashDir(p.Source); err != nil {
+			return result, nil, err
+		}
+	}
 
 	var undo undoStack
 	defer func() {
@@ -698,6 +722,7 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 			p.Version = man.Version
 			p.Commit = commit
 			p.Main = man.Main
+			p.SourceHash = sourceHash
 			p.Generation++
 			p.UpdatedAt = time.Now()
 		},

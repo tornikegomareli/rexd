@@ -886,3 +886,56 @@ func TestUpdateRemovingConfigCodeRemovesTheModule(t *testing.T) {
 		t.Error("Rex must reload, or the old action stays live")
 	}
 }
+
+// A copy has no commit to compare, so an unchanged folder must not count as an update.
+func TestUpdateCopyOnlyWhenTheFolderChanged(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	src := configPlugin(t, "a.b", "1.0", "-- first\n")
+	if _, err := e.m.Install(ctx, Source{Kind: state.KindCopy, Location: src}); err != nil {
+		t.Fatal(err)
+	}
+	generation := e.state().Plugins["a.b"].Generation
+
+	results, err := e.m.Update(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Changed || results[0].Note != "already up to date" {
+		t.Fatalf("nothing changed: %+v", results[0])
+	}
+	if got := e.state().Plugins["a.b"].Generation; got != generation {
+		t.Errorf("generation %d, want %d, so scripts stay running", got, generation)
+	}
+
+	write(t, filepath.Join(src, "rex/config.lua"), "-- second\n")
+	results, err = e.m.Update(ctx, nil)
+	if err != nil || !results[0].Changed {
+		t.Fatalf("the folder changed: %+v, %v", results, err)
+	}
+	if got := read(t, filepath.Join(e.dirs.Plugin("a.b"), "rex/config.lua")); got != "-- second\n" {
+		t.Errorf("config %q", got)
+	}
+	if results, err = e.m.Update(ctx, nil); err != nil || results[0].Changed {
+		t.Fatalf("after the update: %+v, %v", results, err)
+	}
+}
+
+// What a build leaves in a linked folder is not a change.
+func TestUpdateLinkOnlyWhenTheFolderChanged(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	src := pluginFiles(t, "a.b", "1.0", configManifest+"\n\n[[build]]\nrun = [\"sh\", \"-c\", \"date +%N > built\"]\n", map[string]string{"rex/config.lua": "-- first\n"})
+	if _, err := e.m.Install(ctx, Source{Kind: state.KindLink, Location: src}); err != nil {
+		t.Fatal(err)
+	}
+	results, err := e.m.Update(ctx, nil)
+	if err != nil || results[0].Changed {
+		t.Fatalf("nothing changed: %+v, %v", results, err)
+	}
+	write(t, filepath.Join(src, "rex/config.lua"), "-- second\n")
+	results, err = e.m.Update(ctx, nil)
+	if err != nil || !results[0].Changed {
+		t.Fatalf("the folder changed: %+v, %v", results, err)
+	}
+}

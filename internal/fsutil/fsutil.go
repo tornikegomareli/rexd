@@ -2,6 +2,8 @@
 package fsutil
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -127,4 +129,52 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 		return err
 	}
 	return out.Close()
+}
+
+// HashDir returns a hash of what a folder holds: names, contents and modes. Times do not
+// count, so a copy of a folder has the same hash. Git's own folder does not count either.
+func HashDir(dir string) (string, error) {
+	sum := sha256.New()
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(sum, "%s\x00%o\x00", rel, info.Mode())
+		if info.Mode()&fs.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			io.WriteString(sum, target)
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = io.Copy(sum, file)
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
 }

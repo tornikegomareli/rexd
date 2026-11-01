@@ -117,6 +117,19 @@ extension RexdKitTests {
         #expect(lines == ["one", "გამარჯობა", "", "last"])
     }
 
+    @Test func anUpdateSaysOnlyWhatChanged() {
+        let same = ["acme.one: already up to date", "acme.two: already up to date"]
+        #expect(UpdateSummary.text(same, ids: []) == "All plugins are up to date")
+        #expect(UpdateSummary.text(["acme.one: already up to date"], ids: ["acme.one"]) == "one is up to date")
+        #expect(UpdateSummary.text(["acme.one: pinned to v1; remove and install it to change that"], ids: ["acme.one"]) == "one is pinned to v1")
+        #expect(UpdateSummary.text(["Updated acme.one: 1.0 -> 2.0", "acme.two: already up to date"], ids: []) == "Updated one to 2.0")
+        #expect(UpdateSummary.text(["Updated acme.one: new code, still 1.0"], ids: []) == "Updated one")
+        #expect(UpdateSummary.text(["Updated a.one: 1 -> 2", "Updated a.two: 1 -> 2", "a.three: already up to date"], ids: []) == "Updated one and two")
+        #expect(UpdateSummary.text(["Updated a.one: 1 -> 2", "Updated a.two: 1 -> 2", "Updated a.three: 1 -> 2"], ids: []) == "Updated 3 plugins: one, two, three")
+        #expect(UpdateSummary.text(["Building: go build", "Updating acme.one", "Checking the plugin's config", "Updated acme.one: 1.0 -> 1.1"], ids: ["acme.one"]) == "Updated one to 1.1")
+        #expect(UpdateSummary.text([], ids: []) == "All plugins are up to date")
+    }
+
     @Test func aFailureSaysWhatRexdSaid() {
         #expect(RexdClient.failure(["Cloning x", "rexd: it broke", "line 2"], status: 1) == "it broke\nline 2")
         #expect(RexdClient.failure(["only this"], status: 1) == "only this")
@@ -289,6 +302,14 @@ extension RexdKitTests {
         try fake.setStatus(FakeRexd.connected)
         await model.refresh()
         #expect(model.screen == .list)
+    }
+
+    @Test func updateAllSaysWhenNothingChanged() async throws {
+        let fake = try FakeRexd(status: FakeRexd.withPlugin(), list: FakeRexd.fooList, script: #"echo "acme.foo: already up to date""#)
+        let model = fake.model()
+        await model.refresh()
+        await model.update()
+        #expect(model.notice == "All plugins are up to date")
     }
 
     @Test func anOptionOnlyChangesWhenItChanged() async throws {
