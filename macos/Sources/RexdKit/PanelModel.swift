@@ -10,6 +10,8 @@ public final class PanelModel {
         case missing
         /// `rexd` runs, and `rexd setup` has not run.
         case notConnected
+        /// `rexd` runs, and says it cannot answer, such as when Rex is not installed.
+        case unreadable(String)
         case ready
     }
 
@@ -38,9 +40,6 @@ public final class PanelModel {
     public private(set) var failure: String?
     /// What the last command did.
     public private(set) var notice: String?
-    /// Why rexd's state could not be read.
-    public private(set) var readError: String?
-
     /// While the panel is open, the state refreshes more often.
     public var isOpen = false
     /// What the install screen holds.
@@ -58,7 +57,7 @@ public final class PanelModel {
 
     /// Something is wrong that the person should look at, and the menu bar icon says so.
     public var needsAttention: Bool {
-        guard phase == .ready else { return phase == .notConnected }
+        guard phase == .ready else { return phase != .loading && phase != .missing }
         return !daemon.running || daemon.problem != nil || plugins.contains { $0.health == .failing }
     }
 
@@ -88,14 +87,12 @@ public final class PanelModel {
                 return !$0.isEmpty && FileManager.default.fileExists(atPath: folder.appendingPathComponent("rexd.lock").path)
             } ?? false
             phase = current.isConnected ? .ready : .notConnected
-            readError = nil
             if version.isEmpty { version = (try? await client.version()) ?? "" }
             if case .plugin(let id) = screen, plugin(id) == nil { screen = .list }
         } catch {
-            // The binary may have moved, as after an upgrade.
+            // The binary may have moved, as after an upgrade, so the next try finds it again.
             self.client = nil
-            readError = error.localizedDescription
-            if phase == .loading { phase = .missing }
+            phase = .unreadable(error.localizedDescription)
         }
     }
 

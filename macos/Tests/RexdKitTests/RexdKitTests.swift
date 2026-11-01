@@ -335,6 +335,37 @@ extension RexdKitTests {
         #expect(model.plugins.map(\.id) == ["c.bad", "b.loop", "d.wait", "a.calm"])
     }
 
+    /// rexd runs, and says what is wrong, such as Rex not being installed. That is not the
+    /// same as rexd missing, and the person has to read what it said.
+    @Test func whenRexdCannotAnswerItSaysWhy() async throws {
+        let fake = try FakeRexd()
+        let body = "#!/bin/sh\necho 'rexd: could not find the rex command' >&2\nexit 1\n"
+        try body.write(toFile: fake.path, atomically: true, encoding: .utf8)
+        let model = fake.model()
+        await model.refresh()
+        #expect(model.phase == .unreadable("could not find the rex command"))
+        #expect(model.needsAttention)
+
+        // It recovers by itself once rexd can answer.
+        let working = try FakeRexd()
+        let client = working.client
+        let recovered = PanelModel(locate: { client })
+        await recovered.refresh()
+        #expect(recovered.phase == .ready)
+    }
+
+    @Test func itKeepsTryingAfterAFailure() async throws {
+        let fake = try FakeRexd()
+        let original = try String(contentsOfFile: fake.path, encoding: .utf8)
+        try "#!/bin/sh\necho 'rexd: not yet' >&2\nexit 1\n".write(toFile: fake.path, atomically: true, encoding: .utf8)
+        let model = fake.model()
+        await model.refresh()
+        #expect(model.phase == .unreadable("not yet"))
+        try original.write(toFile: fake.path, atomically: true, encoding: .utf8)
+        await model.refresh()
+        #expect(model.phase == .ready)
+    }
+
     @Test func aLogCanFailWithoutBreakingAnything() async throws {
         let fake = try FakeRexd(script: "exit 0")
         let model = fake.model()
@@ -419,6 +450,7 @@ extension RexdKitTests {
         environment["XDG_DATA_HOME"] = home.appendingPathComponent("d").path
         environment["XDG_STATE_HOME"] = home.appendingPathComponent("s").path
         environment["XDG_CONFIG_HOME"] = home.appendingPathComponent("c").path
+        environment["REXD_REX"] = "/usr/bin/true" // rexd asks for Rex even when it has nothing to ask it.
         let client = RexdClient(path: binary, environment: environment)
         let status = try await client.status()
         #expect(status.rexConfig == "")

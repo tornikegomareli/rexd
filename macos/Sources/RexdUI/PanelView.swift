@@ -24,6 +24,7 @@ public struct PanelView: View {
             case .loading: Color.clear.frame(height: 120)
             case .missing: MissingScreen()
             case .notConnected: ConnectScreen(model: model)
+            case .unreadable(let reason): UnreadableScreen(reason: reason)
             case .ready: screen
             }
             CommandStrip(model: model)
@@ -588,6 +589,30 @@ private struct ConnectScreen: View {
                     .disabled(model.isBusy)
             }
         }
+        .padding(12)
+    }
+}
+
+private struct UnreadableScreen: View {
+    @Environment(\.rex) private var rex
+    var reason: String
+
+    var body: some View {
+        TitleBar(title: "rexd") { QuitButton() }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("rexd cannot answer")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(rex.color("text"))
+            Text(verbatim: reason)
+                .font(rex.mono(11))
+                .foregroundStyle(rex.color("text-secondary"))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Fix this, and the panel continues by itself.")
+                .font(.system(size: 12))
+                .foregroundStyle(rex.color("text-tertiary"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
     }
 }
