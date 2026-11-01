@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Install a repository with no manifest, if it holds a Lua module with a `setup` function. Amber plugins use this format.
+- A plugin's config code can `require` other Lua files, from its `rex/lua` or `lua` folder.
+- `rexd set` changes a plugin's options. Config code reads `rexd.plugin.options`, and event scripts read `rex.args`.
+- Version ranges: `owner/repo@^1.2.0` and `@~1.2.0`.
+- `rexd.lock` and `rexd sync` get the same plugins on another machine.
+
 ## 0.2.2
 
 - The README and `rexd help update` now say what the checks cover: Rex checks config code, and not event scripts.

@@ -35,12 +35,15 @@ Ring a bell in a Rex terminal with `printf '\a'`, and a macOS notification names
 ```sh
 rexd install owner/repo                  # a GitHub repository
 rexd install owner/repo@v1.2.0           # at a branch, tag or commit
+rexd install owner/repo@^1.2.0           # the highest 1.x tag, and updates stay there
 rexd install https://gitlab.com/a/b.git  # any git URL
 rexd install ./my-plugin                 # a copy of a local folder
 rexd install ./my-plugin --link          # a link to it, for development
 ```
 
 Rex loads a new plugin's actions and keys straight away. Your own keys win over a plugin's.
+
+A repository needs no `rex-plugin.toml` if it holds a Lua module with a `setup` function, the format [Amber](https://github.com/rawnly/amber) plugins use.
 
 A plugin's build steps and scripts run as you, like any program you install. Install plugins you trust.
 
@@ -62,6 +65,27 @@ Rex does not check event scripts, so a broken script installs like a working one
   <img src=".github/assets/film-check.png" width="100%" alt="A Rex window: rexd install refuses a plugin with a syntax error in its config code, and rexd list shows the other plugins are still installed" />
 </p>
 
+## Options
+
+```sh
+rexd set acme.foo color=red size=3   # set two options
+rexd set acme.foo color=             # remove one
+rexd set acme.foo                    # show them
+```
+
+Rex's checker reads the plugin with the new values, and a failure changes nothing. The plugin's README says which options it has.
+
+## The same plugins on another machine
+
+rexd writes `rexd.lock` beside Rex's `init.lua` on every change, with the commit and options of each plugin from git. Keep it in your dotfiles. On the other machine:
+
+```sh
+rexd setup
+rexd sync
+```
+
+`rexd sync` installs what is missing and moves the rest to their locked commits. It removes nothing.
+
 ## Commands
 
 | Command | What it does |
@@ -70,6 +94,8 @@ Rex does not check event scripts, so a broken script installs like a working one
 | `rexd install SOURCE` | Installs a plugin |
 | `rexd remove ID` | Removes a plugin. `rexd list` shows each ID |
 | `rexd update [ID...]` | Updates plugins, all of them if none are named |
+| `rexd set ID [KEY=VALUE...]` | Shows or changes a plugin's options |
+| `rexd sync` | Makes the plugins match `rexd.lock` |
 | `rexd list` | Lists installed plugins |
 | `rexd status` | Shows the daemon, plugins and event scripts |
 | `rexd logs ID` | Prints the output of a plugin's event scripts |
@@ -92,6 +118,7 @@ brew uninstall rexd
 | --- | --- |
 | `~/.config/rex/init.lua` | Your config, with one added line at the top |
 | `~/.config/rex/rexd.lua` and `rexd/` | Generated: the plugins' config code |
+| `~/.config/rex/rexd.lock` | Generated: the plugins from git, for another machine |
 | `~/.local/share/rexd/` | Installed plugins |
 | `~/.local/state/rexd/` | State, status and logs |
 | `~/Library/LaunchAgents/io.github.tornikegomareli.rexd.plist` | Starts the daemon at login |
@@ -100,7 +127,6 @@ brew uninstall rexd
 
 - Rex is in beta, and an update to it can break rexd.
 - An event script starts once Rex has a session. It misses events from before that.
-- A plugin's config code is one file.
 - Windows is not supported.
 
 ## More

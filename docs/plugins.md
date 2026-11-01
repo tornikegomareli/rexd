@@ -7,6 +7,7 @@ my-plugin/
   rex-plugin.toml
   rex/config.lua     config code, loaded into Rex's config
   rex/notify.lua     an event script, kept running by the daemon
+  lua/my-plugin/     more Lua files, for require (rex/lua if lua is for another program)
 ```
 
 ## Config code or event script
@@ -86,11 +87,11 @@ rex.action{
 rex.bind("ctrl+alt+shift+b", "bell_notify_test")
 ```
 
-`rexd.plugin` has three fields: `id`, `version`, and `dir`, the plugin's folder. An action runs later, so keep what you need in a local, as above. `rexd.plugins[id]` holds the same table for every plugin that has config code.
+`rexd.plugin` has four fields: `id`, `version`, `dir`, the plugin's folder, and `options`, the values from `rexd set`. An action runs later, so keep what you need in a local, as above. `rexd.plugins[id]` holds the same table for every plugin that has config code.
 
 Some rules follow from how Rex loads config:
 
-- **Everything must be in one file.** Rex's `require` only finds files beside `init.lua`, and rexd copies your config file there. Put larger code in a helper program that your actions run.
+- **More files go in `lua/`.** rexd adds the plugin's `rex/lua` folder, or else its `lua` folder, to `package.path`. All plugins share Lua's module names, so start yours with your plugin's name: `require("my-plugin.helpers")`.
 - **Action names are shared.** All plugins and the user's config use one namespace, so start yours with your plugin's name. Action names allow lowercase letters, digits and underscores.
 - **Rex API calls only work inside an action or a function bound to a key.** They fail while the file loads, because no client exists then. `rex.action` and `rex.bind` are the exceptions.
 - **The user's keys win.** rexd loads before the rest of `init.lua`, and the newest binding for a key wins. Choose keys that are unlikely to clash.
@@ -110,7 +111,7 @@ end)
 print("listening")
 ```
 
-The daemon runs it as `rex do notify.lua --all`, so it hears every session, including sessions created later. Its working directory is the plugin's folder, and it has these variables:
+The daemon runs it as `rex do notify.lua --all`, so it hears every session, including sessions created later. Its options are in `rex.args`, and it restarts when they change. Its working directory is the plugin's folder, and it has these variables:
 
 | Variable | Value |
 | --- | --- |
@@ -144,6 +145,20 @@ run = ["sh", "-c", "npm ci && npm run build"]
 
 A step runs in a temporary copy of the plugin, which moves into place afterwards. So write files with relative paths. `REXD_PLUGIN_DIR` is where the plugin ends up, for a build that has to embed that path. That folder may not exist yet, or may still hold the old version, so do not write to it.
 
+## Options
+
+A person sets options with `rexd set my.plugin color=red`. Values are strings, numbers or booleans. An option that is not set is `nil`, so give each one a default in your code, and list them in your README:
+
+```lua
+local color = rexd.plugin.options.color or "blue"
+```
+
+## A plugin with no manifest
+
+rexd also installs a repository with no `rex-plugin.toml`, if `rex/lua` or `lua` holds a module that returns a table with a `setup` function. rexd calls `setup` with the plugin's options. This is the format Amber plugins use.
+
+The id comes from the source: `owner.repo` for a repository, without a trailing `.rex`, and `local.folder` for a local folder. The version is the short commit. With several modules, rexd starts the one named after the repository. Such a plugin cannot have event scripts or build steps, because a manifest names those.
+
 ## Developing a plugin
 
 Install it with a link, so rexd uses your folder directly:
@@ -173,4 +188,4 @@ Removing a linked plugin deletes the link and leaves your folder alone.
 
 ## Publishing
 
-Push the plugin to a public git repository, with `rex-plugin.toml` at the top. People install it with `rexd install owner/repo`. Tag releases, so they can pin one with `rexd install owner/repo@v1.0.0`. A pinned plugin stays where it is on `rexd update`.
+Push the plugin to a public git repository, with `rex-plugin.toml` at the top. People install it with `rexd install owner/repo`. Tag releases as `v1.2.3`, so they can pin one with `rexd install owner/repo@v1.0.0`, or follow a range with `owner/repo@^1.0.0`. A pinned plugin stays where it is on `rexd update`, and a range stays in its range.
