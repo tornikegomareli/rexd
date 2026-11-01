@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - `Rexd.app`, a menu bar app that controls rexd, in `macos/`.
 - `rexd status --json` has `rex_config`, the `init.lua` rexd is connected to.
