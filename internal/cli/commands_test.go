@@ -241,6 +241,26 @@ func TestStatusWithoutADaemon(t *testing.T) {
 	}
 }
 
+func TestStatusNamesTheRexConfigOnceConnected(t *testing.T) {
+	e := newCLI(t)
+	read := func() string {
+		var report struct {
+			RexConfig string `json:"rex_config"`
+		}
+		if err := json.Unmarshal([]byte(e.mustRun("status", "--json")), &report); err != nil {
+			t.Fatal(err)
+		}
+		return report.RexConfig
+	}
+	if got := read(); got != "" {
+		t.Fatalf("before setup: %q", got)
+	}
+	e.setup()
+	if got := read(); got == "" || filepath.Base(got) != "init.lua" {
+		t.Fatalf("after setup: %q", got)
+	}
+}
+
 func TestStatusReportsAPluginThatBrokeLater(t *testing.T) {
 	e := newCLI(t)
 	e.setup()

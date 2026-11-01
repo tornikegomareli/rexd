@@ -245,9 +245,11 @@ func runList(_ context.Context, a *app, args []string) error {
 
 // statusReport is what rexd status knows. It is also the --json format.
 type statusReport struct {
-	Daemon  daemonReport   `json:"daemon"`
-	Rex     state.RexState `json:"rex"`
-	Plugins []pluginReport `json:"plugins"`
+	Daemon daemonReport   `json:"daemon"`
+	Rex    state.RexState `json:"rex"`
+	// RexConfig is the init.lua rexd is connected to. It is empty before rexd setup.
+	RexConfig string         `json:"rex_config"`
+	Plugins   []pluginReport `json:"plugins"`
 }
 
 type daemonReport struct {
@@ -299,7 +301,7 @@ func (a *app) gatherStatus(ctx context.Context) (*statusReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	report := &statusReport{Plugins: []pluginReport{}}
+	report := &statusReport{RexConfig: current.Settings.RexConfig, Plugins: []pluginReport{}}
 	pid, running, err := daemon.Running(m.Dirs)
 	if err != nil {
 		return nil, err
