@@ -227,11 +227,19 @@ func (m *Manager) fetch(ctx context.Context, src Source) (work, commit string, c
 }
 
 func cloneRepo(ctx context.Context, src Source, dir string) (string, error) {
+	ref := src.Ref
+	if isRange(ref) {
+		tag, err := resolveRange(ctx, src.Location, ref)
+		if err != nil {
+			return "", err
+		}
+		ref = tag
+	}
 	if _, err := git(ctx, "", "clone", "--quiet", src.Location, dir); err != nil {
 		return "", err
 	}
-	if src.Ref != "" {
-		if _, err := git(ctx, dir, "checkout", "--quiet", src.Ref); err != nil {
+	if ref != "" {
+		if _, err := git(ctx, dir, "checkout", "--quiet", ref); err != nil {
 			return "", err
 		}
 	}
@@ -596,24 +604,13 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 		work = filepath.Join(staging, "plugin")
 		switch p.Kind {
 		case state.KindGit:
-			branch, err := git(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+			var note string
+			commit, note, err = m.fetchNewer(ctx, p, dir, work)
 			if err != nil {
 				return result, nil, err
 			}
-			if branch == "HEAD" { // Git's answer when no branch is checked out.
-				result.Note = "pinned to " + p.Ref + "; remove and install it to change that"
-				return result, nil, nil
-			}
-			// A fresh clone, because the installed folder holds what the build left.
-			if _, err := git(ctx, "", "clone", "--quiet", "--branch", branch, p.Source, work); err != nil {
-				return result, nil, err
-			}
-			commit, err = git(ctx, work, "rev-parse", "HEAD")
-			if err != nil {
-				return result, nil, err
-			}
-			if commit == p.Commit {
-				result.Note = "already up to date"
+			if note != "" {
+				result.Note = note
 				return result, nil, nil
 			}
 		case state.KindCopy:
@@ -684,6 +681,29 @@ func (m *Manager) updateOne(ctx context.Context, client rex.Client, current *sta
 
 	result.To, result.Changed = man.Version, true
 	return result, man, nil
+}
+
+// fetchNewer clones what the plugin should move to into work, which is a fresh folder
+// because the installed one holds what the build left. A note says why it stays.
+func (m *Manager) fetchNewer(ctx context.Context, p *state.Plugin, dir, work string) (commit, note string, err error) {
+	ref := p.Ref
+	if !isRange(ref) {
+		ref, err = git(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+		if err != nil {
+			return "", "", err
+		}
+		if ref == "HEAD" { // Git's answer when no branch is checked out.
+			return "", "pinned to " + p.Ref + "; remove and install it to change that", nil
+		}
+	}
+	commit, err = cloneRepo(ctx, Source{Location: p.Source, Ref: ref}, work)
+	if err != nil {
+		return "", "", err
+	}
+	if commit == p.Commit {
+		return commit, "already up to date", nil
+	}
+	return commit, "", nil
 }
 
 func updateConfigError(err error) error {

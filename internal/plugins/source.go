@@ -23,7 +23,7 @@ type Source struct {
 	Kind state.Kind
 	// Location is a clone URL, or the absolute path of a local folder.
 	Location string
-	// Ref is a branch, tag or commit to check out. Only git sources have one.
+	// Ref is a branch, tag, commit or version range. Only git sources have one.
 	Ref string
 }
 
